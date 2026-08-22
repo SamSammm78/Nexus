@@ -1,0 +1,2106 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+  />
+
+  <title>NEXUS Map</title>
+
+  <link rel="icon" href="data:,">
+
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/maplibre-gl@5.6.1/dist/maplibre-gl.css"
+  />
+
+  <script src="https://unpkg.com/maplibre-gl@5.6.1/dist/maplibre-gl.js"></script>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      font-family:
+        Inter,
+        -apple-system,
+        BlinkMacSystemFont,
+        "Segoe UI",
+        Arial,
+        sans-serif;
+      background: #06080d;
+      color: #f7f9fc;
+    }
+
+    #map {
+      width: 100%;
+      height: 100%;
+    }
+
+    .map-overlay {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background:
+        radial-gradient(
+          circle at center,
+          transparent 30%,
+          rgba(0, 0, 0, 0.08) 70%,
+          rgba(0, 0, 0, 0.25) 100%
+        );
+      z-index: 2;
+    }
+
+    .nexus-panel {
+      position: absolute;
+      top: 24px;
+      left: 24px;
+      width: 380px;
+      max-height: calc(100vh - 48px);
+      overflow-y: auto;
+      z-index: 20;
+      padding: 22px;
+      border-radius: 24px;
+      background:
+        linear-gradient(
+          180deg,
+          rgba(8, 11, 17, 0.96),
+          rgba(7, 10, 16, 0.90)
+        );
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      box-shadow: 0 22px 60px rgba(0, 0, 0, 0.55);
+      color: #f7f9fc;
+    }
+
+    .nexus-panel::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    .nexus-panel::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.12);
+      border-radius: 99px;
+    }
+
+    .nexus-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 15px;
+      margin-bottom: 22px;
+    }
+
+    .nexus-title-group {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .nexus-title {
+      font-size: 21px;
+      font-weight: 800;
+      letter-spacing: 2.2px;
+    }
+
+    .nexus-subtitle {
+      font-size: 11px;
+      color: #798493;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+
+    .mode-badge {
+      padding: 7px 11px;
+      border-radius: 999px;
+      background: rgba(37, 215, 255, 0.10);
+      border: 1px solid rgba(37, 215, 255, 0.24);
+      color: #6be7ff;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    .route-direction {
+      margin-bottom: 20px;
+    }
+
+    .location-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+    }
+
+    .location-icon-column {
+      width: 18px;
+      display: flex;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .location-dot {
+      width: 11px;
+      height: 11px;
+      border-radius: 50%;
+      margin-top: 5px;
+    }
+
+    .dot-start {
+      background: #18e486;
+      box-shadow: 0 0 12px rgba(24, 228, 134, 0.55);
+    }
+
+    .dot-end {
+      background: #ff4d73;
+      box-shadow: 0 0 12px rgba(255, 77, 115, 0.50);
+    }
+
+    .location-content {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .location-label {
+      font-size: 10px;
+      text-transform: uppercase;
+      color: #707b89;
+      letter-spacing: 0.9px;
+      margin-bottom: 3px;
+    }
+
+    .location-name {
+      font-size: 15px;
+      font-weight: 650;
+      line-height: 1.35;
+      color: #f4f6fa;
+    }
+
+    .location-separator {
+      width: 2px;
+      height: 25px;
+      margin: 5px 0 5px 8px;
+      background:
+        linear-gradient(
+          to bottom,
+          rgba(255,255,255,0.20),
+          rgba(255,255,255,0.04)
+        );
+      border-radius: 4px;
+    }
+
+    .route-info-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+
+    .info-card {
+      min-height: 72px;
+      padding: 13px;
+      border-radius: 15px;
+      background: rgba(255,255,255,0.035);
+      border: 1px solid rgba(255,255,255,0.055);
+    }
+
+    .info-label {
+      margin-bottom: 6px;
+      font-size: 10px;
+      color: #6e7886;
+      text-transform: uppercase;
+      letter-spacing: 0.9px;
+    }
+
+    .info-value {
+      font-size: 18px;
+      font-weight: 700;
+      color: #f8f9fb;
+    }
+
+    .time-grid {
+      display: none;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+
+    .time-grid.visible {
+      display: grid;
+    }
+
+    .transport-section {
+      display: none;
+      margin-top: 4px;
+      margin-bottom: 14px;
+    }
+
+    .transport-section.visible {
+      display: block;
+    }
+
+    .transport-title {
+      margin-bottom: 10px;
+      font-size: 10px;
+      color: #707b89;
+      text-transform: uppercase;
+      letter-spacing: 0.9px;
+    }
+
+    .transport-lines {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .line-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 7px 10px;
+      border-radius: 10px;
+      background: rgba(255,255,255,0.045);
+      border: 1px solid rgba(255,255,255,0.055);
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .line-chip-color {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .status-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 4px 0 14px;
+      font-size: 11px;
+      color: #687381;
+    }
+
+    .status-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #18e486;
+      box-shadow: 0 0 8px rgba(24, 228, 134, 0.60);
+    }
+
+    .button {
+      width: 100%;
+      padding: 12px 14px;
+      border-radius: 13px;
+      border: 1px solid rgba(255,255,255,0.075);
+      background: rgba(255,255,255,0.045);
+      color: #eef2f6;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition:
+        background 0.2s ease,
+        transform 0.2s ease,
+        border-color 0.2s ease;
+    }
+
+    .button:hover {
+      background: rgba(255,255,255,0.09);
+      border-color: rgba(255,255,255,0.13);
+      transform: translateY(-1px);
+    }
+
+    .marker {
+      width: 17px;
+      height: 17px;
+      border-radius: 50%;
+      border: 3px solid white;
+      box-shadow:
+        0 0 0 3px rgba(0,0,0,0.12),
+        0 0 16px rgba(255,255,255,0.18);
+    }
+
+    .marker-start {
+      background: #18e486;
+    }
+
+    .marker-end {
+      background: #ff4d73;
+    }
+
+    .time-marker {
+      padding: 5px 8px;
+      border-radius: 8px;
+      background: rgba(8, 11, 17, 0.94);
+      border: 1px solid rgba(255,255,255,0.14);
+      color: #ffffff;
+      font-size: 11px;
+      font-weight: 750;
+      letter-spacing: 0.25px;
+      box-shadow: 0 6px 18px rgba(0,0,0,0.35);
+      backdrop-filter: blur(10px);
+      white-space: nowrap;
+    }
+
+    .maplibregl-popup-content {
+      background: #0d1219;
+      color: #f4f7fa;
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 13px;
+      padding: 12px 14px;
+      box-shadow: 0 12px 35px rgba(0,0,0,0.45);
+      font-family: Inter, Arial, sans-serif;
+    }
+
+    .maplibregl-popup-tip {
+      border-top-color: #0d1219 !important;
+    }
+
+    .transfer-popup-title {
+      font-size: 12px;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+
+    .transfer-popup-text {
+      font-size: 11px;
+      color: #9aa4b0;
+      line-height: 1.45;
+    }
+
+    .transfer-times {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .transfer-time-box {
+      padding: 8px;
+      border-radius: 9px;
+      background: rgba(255,255,255,0.045);
+      border: 1px solid rgba(255,255,255,0.06);
+    }
+
+    .transfer-time-label {
+      display: block;
+      color: #75808e;
+      font-size: 9px;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      margin-bottom: 3px;
+    }
+
+    .transfer-time-value {
+      font-size: 13px;
+      font-weight: 750;
+      color: #fff;
+    }
+
+    .maplibregl-ctrl-group {
+      overflow: hidden;
+      border-radius: 13px !important;
+      background: rgba(8,11,17,0.86) !important;
+      border: 1px solid rgba(255,255,255,0.08) !important;
+      box-shadow: 0 8px 25px rgba(0,0,0,0.3) !important;
+      backdrop-filter: blur(12px);
+    }
+
+    .maplibregl-ctrl-group button {
+      filter: invert(1);
+      opacity: 0.85;
+    }
+
+    @media (max-width: 700px) {
+      .nexus-panel {
+        left: 14px;
+        right: 14px;
+        top: 14px;
+        width: auto;
+        max-height: 52vh;
+        padding: 18px;
+      }
+
+      .route-info-grid,
+      .time-grid.visible {
+        gap: 8px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+  <div id="map"></div>
+  <div class="map-overlay"></div>
+
+  <div class="nexus-panel">
+
+    <div class="nexus-header">
+
+      <div class="nexus-title-group">
+        <div class="nexus-title">NEXUS</div>
+        <div class="nexus-subtitle">Navigation System</div>
+      </div>
+
+      <div
+        class="mode-badge"
+        id="modeBadge"
+      >
+        EN ATTENTE
+      </div>
+
+    </div>
+
+    <div class="route-direction">
+
+      <div class="location-row">
+        <div class="location-icon-column">
+          <div class="location-dot dot-start"></div>
+        </div>
+
+        <div class="location-content">
+          <div class="location-label">Départ</div>
+          <div class="location-name" id="originName">-</div>
+        </div>
+      </div>
+
+      <div class="location-separator"></div>
+
+      <div class="location-row">
+        <div class="location-icon-column">
+          <div class="location-dot dot-end"></div>
+        </div>
+
+        <div class="location-content">
+          <div class="location-label">Destination</div>
+          <div class="location-name" id="destinationName">-</div>
+        </div>
+      </div>
+
+    </div>
+
+    <div
+      class="time-grid"
+      id="timeGrid"
+    >
+      <div class="info-card">
+        <div class="info-label">Départ</div>
+        <div class="info-value" id="departureTime">-</div>
+      </div>
+
+      <div class="info-card">
+        <div class="info-label">Arrivée</div>
+        <div class="info-value" id="arrivalTime">-</div>
+      </div>
+    </div>
+
+    <div class="route-info-grid">
+
+      <div class="info-card">
+        <div class="info-label">Durée</div>
+        <div class="info-value" id="routeDuration">-</div>
+      </div>
+
+      <div class="info-card">
+        <div class="info-label" id="secondaryLabel">
+          Distance
+        </div>
+
+        <div class="info-value" id="routeSecondary">
+          -
+        </div>
+      </div>
+
+    </div>
+
+    <div
+      class="transport-section"
+      id="transportSection"
+    >
+      <div class="transport-title">
+        Lignes utilisées
+      </div>
+
+      <div
+        class="transport-lines"
+        id="transportLines"
+      ></div>
+    </div>
+
+    <div class="status-row">
+      <div class="status-dot"></div>
+      <span id="statusText">
+        En attente d'un itinéraire
+      </span>
+    </div>
+
+    <button
+      class="button"
+      onclick="focusCurrentRoute()"
+    >
+      Recentrer sur le trajet
+    </button>
+
+  </div>
+
+  <script>
+
+    const map =
+      new maplibregl.Map({
+        container: "map",
+
+        style:
+          "https://tiles.openfreemap.org/styles/liberty",
+
+        center:
+          [2.15, 48.9],
+
+        zoom:
+          10,
+
+        pitch:
+          42,
+
+        bearing:
+          -6,
+
+        antialias:
+          true
+      });
+
+
+    map.addControl(
+      new maplibregl.NavigationControl(),
+      "top-right"
+    );
+
+
+    map.addControl(
+      new maplibregl.FullscreenControl(),
+      "top-right"
+    );
+
+
+    let lastRouteUpdate =
+      null;
+
+    let currentCoordinates =
+      [];
+
+    let startMarker =
+      null;
+
+    let endMarker =
+      null;
+
+    let transferMarkers =
+      [];
+
+    let timeMarkers =
+      [];
+
+
+    function flattenGeometryCoordinates(
+      geometry
+    ) {
+
+      if (!geometry) {
+        return [];
+      }
+
+      if (
+        geometry.type ===
+        "LineString"
+      ) {
+        return geometry.coordinates ?? [];
+      }
+
+      if (
+        geometry.type ===
+        "MultiLineString"
+      ) {
+        return (geometry.coordinates ?? []).flat();
+      }
+
+      return [];
+    }
+
+
+    function normalizeColor(
+      color
+    ) {
+
+      if (!color) {
+        return null;
+      }
+
+      if (
+        color.startsWith("#")
+      ) {
+        return color;
+      }
+
+      return `#${color}`;
+    }
+
+
+    function getTransitColor(
+      segment
+    ) {
+
+      const idfmColor =
+        normalizeColor(
+          segment.transport?.color
+        );
+
+
+      if (idfmColor) {
+        return idfmColor;
+      }
+
+
+      const mode =
+        segment.transport?.mode
+          ?.toLowerCase()
+          ?? "";
+
+
+      if (
+        mode.includes("rer")
+      ) {
+        return "#3f8cff";
+      }
+
+      if (
+        mode.includes("metro")
+      ) {
+        return "#e8b632";
+      }
+
+      if (
+        mode.includes("tram")
+      ) {
+        return "#37c983";
+      }
+
+      if (
+        mode.includes("bus")
+      ) {
+        return "#a467ff";
+      }
+
+      if (
+        mode.includes("train")
+      ) {
+        return "#49cce8";
+      }
+
+      return "#45dff5";
+    }
+
+
+    function updateHUD({
+      type,
+      origin,
+      destination,
+      duration,
+      distance,
+      transfers,
+      segments,
+      departure,
+      arrival
+    }) {
+
+      document
+        .getElementById(
+          "originName"
+        )
+        .textContent =
+          origin ?? "-";
+
+
+      document
+        .getElementById(
+          "destinationName"
+        )
+        .textContent =
+          destination ?? "-";
+
+
+      document
+        .getElementById(
+          "routeDuration"
+        )
+        .textContent =
+          duration ?? "-";
+
+
+      const modeBadge =
+        document.getElementById(
+          "modeBadge"
+        );
+
+
+      const secondaryLabel =
+        document.getElementById(
+          "secondaryLabel"
+        );
+
+
+      const secondary =
+        document.getElementById(
+          "routeSecondary"
+        );
+
+
+      const statusText =
+        document.getElementById(
+          "statusText"
+        );
+
+
+      const timeGrid =
+        document.getElementById(
+          "timeGrid"
+        );
+
+
+      if (
+        type === "driving"
+      ) {
+
+        modeBadge.textContent =
+          "VOITURE";
+
+
+        secondaryLabel.textContent =
+          "Distance";
+
+
+        secondary.textContent =
+          distance ?? "-";
+
+
+        statusText.textContent =
+          "Itinéraire routier chargé";
+
+
+        timeGrid.classList.remove(
+          "visible"
+        );
+
+
+        hideTransportLines();
+
+      } else {
+
+        modeBadge.textContent =
+          "TRANSPORT";
+
+
+        secondaryLabel.textContent =
+          "Correspondances";
+
+
+        secondary.textContent =
+          String(
+            transfers ?? 0
+          );
+
+
+        statusText.textContent =
+          "Itinéraire IDFM chargé";
+
+
+        document
+          .getElementById(
+            "departureTime"
+          )
+          .textContent =
+            departure ?? "-";
+
+
+        document
+          .getElementById(
+            "arrivalTime"
+          )
+          .textContent =
+            arrival ?? "-";
+
+
+        timeGrid.classList.add(
+          "visible"
+        );
+
+
+        displayTransportLines(
+          segments ?? []
+        );
+      }
+    }
+
+
+    function hideTransportLines() {
+
+      document
+        .getElementById(
+          "transportSection"
+        )
+        .classList
+        .remove(
+          "visible"
+        );
+
+
+      document
+        .getElementById(
+          "transportLines"
+        )
+        .innerHTML =
+          "";
+    }
+
+
+    function displayTransportLines(
+      segments
+    ) {
+
+      const section =
+        document.getElementById(
+          "transportSection"
+        );
+
+
+      const container =
+        document.getElementById(
+          "transportLines"
+        );
+
+
+      container.innerHTML =
+        "";
+
+
+      const transports =
+        segments.filter(
+          segment =>
+            segment.type ===
+              "public_transport"
+            &&
+            segment.transport
+        );
+
+
+      if (
+        !transports.length
+      ) {
+
+        section.classList.remove(
+          "visible"
+        );
+
+        return;
+      }
+
+
+      section.classList.add(
+        "visible"
+      );
+
+
+      transports.forEach(
+        segment => {
+
+          const chip =
+            document.createElement(
+              "div"
+            );
+
+
+          chip.className =
+            "line-chip";
+
+
+          const color =
+            getTransitColor(
+              segment
+            );
+
+
+          const dot =
+            document.createElement(
+              "div"
+            );
+
+
+          dot.className =
+            "line-chip-color";
+
+
+          dot.style.background =
+            color;
+
+
+          dot.style.boxShadow =
+            `0 0 7px ${color}`;
+
+
+          const text =
+            document.createElement(
+              "span"
+            );
+
+
+          const mode =
+            segment.transport?.mode
+            ?? "";
+
+
+          const line =
+            segment.transport?.line
+            ?? "";
+
+
+          text.textContent =
+            [mode, line]
+              .filter(Boolean)
+              .join(" ");
+
+
+          chip.appendChild(
+            dot
+          );
+
+
+          chip.appendChild(
+            text
+          );
+
+
+          container.appendChild(
+            chip
+          );
+        }
+      );
+    }
+
+
+    function clearTransferMarkers() {
+
+      for (
+        const marker
+        of transferMarkers
+      ) {
+        marker.remove();
+      }
+
+      transferMarkers =
+        [];
+    }
+
+
+    function clearTimeMarkers() {
+
+      for (
+        const marker
+        of timeMarkers
+      ) {
+        marker.remove();
+      }
+
+      timeMarkers =
+        [];
+    }
+
+
+    function clearMarkers() {
+
+      if (
+        startMarker
+      ) {
+        startMarker.remove();
+        startMarker = null;
+      }
+
+
+      if (
+        endMarker
+      ) {
+        endMarker.remove();
+        endMarker = null;
+      }
+
+
+      clearTransferMarkers();
+      clearTimeMarkers();
+    }
+
+
+    function displayMarkers(
+      coordinates
+    ) {
+
+      if (
+        !coordinates?.length
+      ) {
+        return;
+      }
+
+
+      const start =
+        coordinates[0];
+
+
+      const end =
+        coordinates[
+          coordinates.length - 1
+        ];
+
+
+      const startElement =
+        document.createElement(
+          "div"
+        );
+
+
+      startElement.className =
+        "marker marker-start";
+
+
+      startMarker =
+        new maplibregl.Marker({
+          element:
+            startElement
+        })
+          .setLngLat(
+            start
+          )
+          .addTo(
+            map
+          );
+
+
+      const endElement =
+        document.createElement(
+          "div"
+        );
+
+
+      endElement.className =
+        "marker marker-end";
+
+
+      endMarker =
+        new maplibregl.Marker({
+          element:
+            endElement
+        })
+          .setLngLat(
+            end
+          )
+          .addTo(
+            map
+          );
+    }
+
+
+    function createTimeMarker(
+      coordinate,
+      time,
+      station,
+      options = {}
+    ) {
+
+      if (
+        !coordinate ||
+        !time
+      ) {
+        return;
+      }
+
+
+      const element =
+        document.createElement(
+          "div"
+        );
+
+
+      element.className =
+        "time-marker";
+
+
+      element.textContent =
+        time;
+
+
+      if (
+        options.color
+      ) {
+
+        element.style.borderColor =
+          `${options.color}80`;
+
+
+        element.style.boxShadow =
+          `0 4px 15px ${options.color}30`;
+      }
+
+
+      const marker =
+        new maplibregl.Marker({
+          element,
+
+          anchor:
+            options.anchor
+            ?? "bottom",
+
+          offset:
+            options.offset
+            ?? [0, -10]
+        })
+          .setLngLat(
+            coordinate
+          );
+
+
+      if (
+        station
+      ) {
+
+        marker.setPopup(
+          new maplibregl.Popup({
+            offset: 20
+          })
+            .setHTML(
+              `
+                <div>
+                  <div class="transfer-popup-title">
+                    ${station}
+                  </div>
+
+                  <div class="transfer-popup-text">
+                    Horaire : <strong>${time}</strong>
+                  </div>
+                </div>
+              `
+            )
+        );
+      }
+
+
+      marker.addTo(
+        map
+      );
+
+
+      timeMarkers.push(
+        marker
+      );
+    }
+
+
+    function createTransferMarker(
+      coordinate,
+      color,
+      station,
+      fromLine,
+      toLine,
+      arrivalTime,
+      departureTime
+    ) {
+
+      if (
+        !coordinate
+      ) {
+        return;
+      }
+
+
+      const element =
+        document.createElement(
+          "div"
+        );
+
+
+      element.style.width =
+        "17px";
+
+      element.style.height =
+        "17px";
+
+      element.style.borderRadius =
+        "50%";
+
+      element.style.background =
+        color;
+
+      element.style.border =
+        "4px solid #ffffff";
+
+      element.style.boxShadow =
+        `0 0 0 3px rgba(0,0,0,0.25),
+         0 0 13px ${color}`;
+
+      element.style.cursor =
+        "pointer";
+
+
+      const popup =
+        new maplibregl.Popup({
+          offset: 20
+        })
+          .setHTML(
+            `
+              <div>
+
+                <div
+                  class="transfer-popup-title"
+                >
+                  ${station || "Correspondance"}
+                </div>
+
+                <div
+                  class="transfer-popup-text"
+                >
+                  ${fromLine || ""}
+                  →
+                  ${toLine || ""}
+                </div>
+
+                <div class="transfer-times">
+
+                  <div class="transfer-time-box">
+                    <span class="transfer-time-label">
+                      Arrivée
+                    </span>
+
+                    <span class="transfer-time-value">
+                      ${arrivalTime ?? "-"}
+                    </span>
+                  </div>
+
+                  <div class="transfer-time-box">
+                    <span class="transfer-time-label">
+                      Départ
+                    </span>
+
+                    <span class="transfer-time-value">
+                      ${departureTime ?? "-"}
+                    </span>
+                  </div>
+
+                </div>
+
+              </div>
+            `
+          );
+
+
+      const marker =
+        new maplibregl.Marker({
+          element
+        })
+          .setLngLat(
+            coordinate
+          )
+          .setPopup(
+            popup
+          )
+          .addTo(
+            map
+          );
+
+
+      transferMarkers.push(
+        marker
+      );
+    }
+
+
+    function focusCurrentRoute() {
+
+      if (
+        !currentCoordinates.length
+      ) {
+        return;
+      }
+
+
+      const bounds =
+        new maplibregl
+          .LngLatBounds();
+
+
+      currentCoordinates.forEach(
+        coordinate => {
+          bounds.extend(
+            coordinate
+          );
+        }
+      );
+
+
+      map.fitBounds(
+        bounds,
+        {
+          padding: {
+            top: 80,
+            bottom: 80,
+            left: 430,
+            right: 90
+          },
+
+          duration:
+            1000,
+
+          maxZoom:
+            14
+        }
+      );
+    }
+
+
+    function clearDrivingRoute() {
+
+      if (
+        map.getLayer(
+          "nexus-route-line"
+        )
+      ) {
+        map.removeLayer(
+          "nexus-route-line"
+        );
+      }
+
+
+      if (
+        map.getLayer(
+          "nexus-route-glow"
+        )
+      ) {
+        map.removeLayer(
+          "nexus-route-glow"
+        );
+      }
+
+
+      if (
+        map.getSource(
+          "nexus-route"
+        )
+      ) {
+        map.removeSource(
+          "nexus-route"
+        );
+      }
+    }
+
+
+    function clearTransitLayers() {
+
+      const style =
+        map.getStyle();
+
+
+      if (
+        !style
+      ) {
+        return;
+      }
+
+
+      const layers =
+        (style.layers ?? [])
+          .filter(
+            layer =>
+              layer.id.startsWith(
+                "transit-layer-"
+              )
+              ||
+              layer.id.startsWith(
+                "transit-glow-"
+              )
+          );
+
+
+      for (
+        const layer
+        of layers
+      ) {
+
+        if (
+          map.getLayer(
+            layer.id
+          )
+        ) {
+          map.removeLayer(
+            layer.id
+          );
+        }
+      }
+
+
+      const sources =
+        Object.keys(
+          style.sources ?? {}
+        )
+          .filter(
+            sourceId =>
+              sourceId.startsWith(
+                "transit-source-"
+              )
+          );
+
+
+      for (
+        const sourceId
+        of sources
+      ) {
+
+        if (
+          map.getSource(
+            sourceId
+          )
+        ) {
+          map.removeSource(
+            sourceId
+          );
+        }
+      }
+    }
+
+
+    function displayDrivingRoute(
+      data
+    ) {
+
+      clearMarkers();
+      clearTransitLayers();
+      clearDrivingRoute();
+
+
+      const geometry =
+        data.geometry;
+
+
+      if (
+        !geometry
+      ) {
+
+        console.error(
+          "[MAP] Geometry voiture absente"
+        );
+
+        return;
+      }
+
+
+      currentCoordinates =
+        flattenGeometryCoordinates(
+          geometry
+        );
+
+
+      const geojson = {
+        type: "Feature",
+        properties: {},
+        geometry
+      };
+
+
+      map.addSource(
+        "nexus-route",
+        {
+          type: "geojson",
+          data: geojson
+        }
+      );
+
+
+      map.addLayer({
+        id:
+          "nexus-route-glow",
+
+        type:
+          "line",
+
+        source:
+          "nexus-route",
+
+        layout: {
+          "line-join": "round",
+          "line-cap": "round"
+        },
+
+        paint: {
+          "line-color": "#2ed8ff",
+          "line-width": 14,
+          "line-opacity": 0.14,
+          "line-blur": 5
+        }
+      });
+
+
+      map.addLayer({
+        id:
+          "nexus-route-line",
+
+        type:
+          "line",
+
+        source:
+          "nexus-route",
+
+        layout: {
+          "line-join": "round",
+          "line-cap": "round"
+        },
+
+        paint: {
+          "line-color": "#38dfff",
+          "line-width": 5,
+          "line-opacity": 0.96
+        }
+      });
+
+
+      displayMarkers(
+        currentCoordinates
+      );
+
+
+      updateHUD({
+        type:
+          "driving",
+
+        origin:
+          data.origin,
+
+        destination:
+          data.destination,
+
+        duration:
+          data.duration,
+
+        distance:
+          data.distance
+      });
+
+
+      focusCurrentRoute();
+    }
+
+
+    function displayTransitRoute(
+      data
+    ) {
+
+      clearMarkers();
+      clearDrivingRoute();
+      clearTransitLayers();
+
+
+      currentCoordinates =
+        [];
+
+
+      const segments =
+        data.segments
+        ?? [];
+
+
+      segments.forEach(
+        (
+          segment,
+          index
+        ) => {
+
+          if (
+            !segment.geometry
+          ) {
+            return;
+          }
+
+
+          const coordinates =
+            flattenGeometryCoordinates(
+              segment.geometry
+            );
+
+
+          if (
+            !coordinates.length
+          ) {
+            return;
+          }
+
+
+          currentCoordinates.push(
+            ...coordinates
+          );
+
+
+          const sourceId =
+            `transit-source-${index}`;
+
+          const layerId =
+            `transit-layer-${index}`;
+
+          const glowId =
+            `transit-glow-${index}`;
+
+
+          const isPublicTransport =
+            segment.type ===
+            "public_transport";
+
+
+          const color =
+            isPublicTransport
+              ? getTransitColor(
+                  segment
+                )
+              : "#8f99a6";
+
+
+          map.addSource(
+            sourceId,
+            {
+              type:
+                "geojson",
+
+              data: {
+                type:
+                  "Feature",
+
+                properties:
+                  {},
+
+                geometry:
+                  segment.geometry
+              }
+            }
+          );
+
+
+          if (
+            isPublicTransport
+          ) {
+
+            map.addLayer({
+              id:
+                glowId,
+
+              type:
+                "line",
+
+              source:
+                sourceId,
+
+              layout: {
+                "line-join": "round",
+                "line-cap": "round"
+              },
+
+              paint: {
+                "line-color": color,
+                "line-width": 13,
+                "line-opacity": 0.13,
+                "line-blur": 5
+              }
+            });
+          }
+
+
+          map.addLayer({
+            id:
+              layerId,
+
+            type:
+              "line",
+
+            source:
+              sourceId,
+
+            layout: {
+              "line-join": "round",
+              "line-cap": "round"
+            },
+
+            paint: {
+              "line-color":
+                color,
+
+              "line-width":
+                isPublicTransport
+                  ? 6
+                  : 3,
+
+              "line-opacity":
+                isPublicTransport
+                  ? 0.96
+                  : 0.68,
+
+              "line-dasharray":
+                isPublicTransport
+                  ? [1, 0]
+                  : [2, 2]
+            }
+          });
+        }
+      );
+
+
+      const transportSegments =
+        segments.filter(
+          segment =>
+            segment.type ===
+              "public_transport"
+            &&
+            segment.geometry
+        );
+
+
+      // Horaires :
+      // on affiche uniquement le premier départ et
+      // la dernière arrivée directement sur la carte,
+      // pour éviter de surcharger l'affichage.
+      if (
+        transportSegments.length
+      ) {
+
+        const first =
+          transportSegments[0];
+
+
+        const last =
+          transportSegments[
+            transportSegments.length - 1
+          ];
+
+
+        const firstCoordinates =
+          flattenGeometryCoordinates(
+            first.geometry
+          );
+
+
+        const lastCoordinates =
+          flattenGeometryCoordinates(
+            last.geometry
+          );
+
+
+        if (
+          firstCoordinates.length
+        ) {
+
+          createTimeMarker(
+            firstCoordinates[0],
+            first.departure,
+            first.from,
+            {
+              color:
+                getTransitColor(
+                  first
+                ),
+
+              anchor:
+                "bottom",
+
+              offset:
+                [0, -12]
+            }
+          );
+        }
+
+
+        if (
+          lastCoordinates.length
+        ) {
+
+          createTimeMarker(
+            lastCoordinates[
+              lastCoordinates.length - 1
+            ],
+
+            last.arrival,
+
+            last.to,
+
+            {
+              color:
+                getTransitColor(
+                  last
+                ),
+
+              anchor:
+                "top",
+
+              offset:
+                [0, 12]
+            }
+          );
+        }
+      }
+
+
+      // Correspondances
+      for (
+        let index = 0;
+
+        index <
+          transportSegments.length - 1;
+
+        index++
+      ) {
+
+        const current =
+          transportSegments[
+            index
+          ];
+
+
+        const next =
+          transportSegments[
+            index + 1
+          ];
+
+
+        const coordinates =
+          flattenGeometryCoordinates(
+            current.geometry
+          );
+
+
+        if (
+          !coordinates.length
+        ) {
+          continue;
+        }
+
+
+        const transferCoordinate =
+          coordinates[
+            coordinates.length - 1
+          ];
+
+
+        const nextColor =
+          getTransitColor(
+            next
+          );
+
+
+        const currentName =
+          [
+            current.transport?.mode,
+            current.transport?.line
+          ]
+            .filter(Boolean)
+            .join(" ");
+
+
+        const nextName =
+          [
+            next.transport?.mode,
+            next.transport?.line
+          ]
+            .filter(Boolean)
+            .join(" ");
+
+
+        createTransferMarker(
+          transferCoordinate,
+          nextColor,
+          current.to,
+          currentName,
+          nextName,
+          current.arrival,
+          next.departure
+        );
+      }
+
+
+      displayMarkers(
+        currentCoordinates
+      );
+
+
+      updateHUD({
+        type:
+          "transit",
+
+        origin:
+          data.origin,
+
+        destination:
+          data.destination,
+
+        duration:
+          data.duration,
+
+        transfers:
+          data.transfers,
+
+        segments:
+          segments,
+
+        departure:
+          data.departure,
+
+        arrival:
+          data.arrival
+      });
+
+
+      focusCurrentRoute();
+    }
+
+
+    async function loadNexusRoute() {
+
+      try {
+
+        const response =
+          await fetch(
+            `/data/current-route.json?t=${Date.now()}`,
+            {
+              cache:
+                "no-store"
+            }
+          );
+
+
+        if (
+          !response.ok
+        ) {
+
+          console.error(
+            "[MAP] current-route.json HTTP",
+            response.status
+          );
+
+          return;
+        }
+
+
+        const data =
+          await response.json();
+
+
+        if (
+          !data ||
+          !data.type
+        ) {
+          return;
+        }
+
+
+        if (
+          data.updatedAt &&
+          data.updatedAt ===
+            lastRouteUpdate
+        ) {
+          return;
+        }
+
+
+        lastRouteUpdate =
+          data.updatedAt
+          ?? Date.now();
+
+
+        console.log(
+          "[MAP] Nouveau trajet :",
+          data
+        );
+
+
+        if (
+          data.type ===
+          "driving"
+        ) {
+
+          displayDrivingRoute(
+            data
+          );
+
+          return;
+        }
+
+
+        if (
+          data.type ===
+          "transit"
+        ) {
+
+          displayTransitRoute(
+            data
+          );
+
+          return;
+        }
+
+
+        console.warn(
+          "[MAP] Type inconnu :",
+          data.type
+        );
+
+      } catch (
+        error
+      ) {
+
+        console.error(
+          "[MAP] Erreur :",
+          error
+        );
+      }
+    }
+
+
+    map.on(
+      "load",
+      () => {
+
+        console.log(
+          "NEXUS Map chargée"
+        );
+
+
+        document
+          .getElementById(
+            "statusText"
+          )
+          .textContent =
+            "Connexion à NEXUS active";
+
+
+        loadNexusRoute();
+
+
+        setInterval(
+          loadNexusRoute,
+          1000
+        );
+      }
+    );
+
+  </script>
+
+</body>
+</html>

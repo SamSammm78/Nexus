@@ -1,0 +1,1705 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+  />
+
+  <title>NEXUS Gesture Drag Test</title>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      padding: 0;
+
+      width: 100%;
+      height: 100%;
+
+      overflow: hidden;
+
+      background: #05070b;
+      color: white;
+
+      font-family:
+        Inter,
+        -apple-system,
+        BlinkMacSystemFont,
+        "Segoe UI",
+        Arial,
+        sans-serif;
+    }
+
+    #app {
+      position: relative;
+
+      width: 100%;
+      height: 100%;
+    }
+
+    #video {
+      position: absolute;
+
+      width: 100%;
+      height: 100%;
+
+      object-fit: cover;
+
+      transform: scaleX(-1);
+
+      filter:
+        brightness(0.55)
+        contrast(1.08);
+    }
+
+    #canvas {
+      position: absolute;
+
+      left: 0;
+      top: 0;
+
+      width: 100%;
+      height: 100%;
+
+      pointer-events: none;
+
+      z-index: 5;
+    }
+
+    .overlay {
+      position: absolute;
+
+      inset: 0;
+
+      pointer-events: none;
+
+      z-index: 2;
+
+      background:
+        radial-gradient(
+          circle at center,
+          transparent 35%,
+          rgba(0,0,0,0.18) 80%,
+          rgba(0,0,0,0.48) 100%
+        );
+    }
+
+    .hud {
+      position: absolute;
+
+      top: 24px;
+      left: 24px;
+
+      width: 330px;
+
+      padding: 20px;
+
+      border-radius: 20px;
+
+      background:
+        rgba(
+          8,
+          11,
+          18,
+          0.90
+        );
+
+      border:
+        1px solid
+        rgba(
+          255,
+          255,
+          255,
+          0.08
+        );
+
+      backdrop-filter: blur(18px);
+
+      box-shadow:
+        0 20px 50px
+        rgba(
+          0,
+          0,
+          0,
+          0.45
+        );
+
+      z-index: 30;
+    }
+
+    .title {
+      font-size: 20px;
+      font-weight: 800;
+
+      letter-spacing: 2px;
+    }
+
+    .subtitle {
+      margin-top: 4px;
+
+      font-size: 10px;
+
+      color: #718090;
+
+      letter-spacing: 1px;
+
+      text-transform: uppercase;
+    }
+
+    .status {
+      margin-top: 20px;
+
+      padding: 14px;
+
+      border-radius: 14px;
+
+      background:
+        rgba(
+          255,
+          255,
+          255,
+          0.04
+        );
+
+      border:
+        1px solid
+        rgba(
+          255,
+          255,
+          255,
+          0.05
+        );
+    }
+
+    .label {
+      font-size: 10px;
+
+      text-transform: uppercase;
+
+      color: #73808d;
+
+      letter-spacing: 1px;
+
+      margin-bottom: 6px;
+    }
+
+    #gesture {
+      font-size: 26px;
+      font-weight: 800;
+
+      color: #5de6ff;
+    }
+
+    #handStatus {
+      margin-top: 10px;
+
+      font-size: 13px;
+
+      color: #aab4bf;
+    }
+
+    #pinchValue {
+      margin-top: 6px;
+
+      font-size: 12px;
+
+      color: #6e7985;
+    }
+
+    #dragStatus {
+      margin-top: 6px;
+
+      font-size: 12px;
+
+      color: #7d8995;
+    }
+
+    .help {
+      margin-top: 14px;
+
+      font-size: 12px;
+
+      line-height: 1.6;
+
+      color: #8995a1;
+    }
+
+    #cursor {
+      position: absolute;
+
+      width: 26px;
+      height: 26px;
+
+      border-radius: 50%;
+
+      background:
+        rgba(
+          65,
+          226,
+          255,
+          0.22
+        );
+
+      border:
+        2px solid
+        #59e5ff;
+
+      box-shadow:
+        0 0 18px
+        rgba(
+          66,
+          220,
+          255,
+          0.65
+        );
+
+      transform:
+        translate(
+          -50%,
+          -50%
+        );
+
+      pointer-events: none;
+
+      display: none;
+
+      z-index: 40;
+
+      transition:
+        width 0.08s ease,
+        height 0.08s ease,
+        background 0.08s ease;
+    }
+
+    #cursor.pinch {
+      width: 18px;
+      height: 18px;
+
+      background:
+        #66eaff;
+
+      box-shadow:
+        0 0 30px
+        rgba(
+          66,
+          220,
+          255,
+          1
+        );
+    }
+
+    .draggable-card {
+      position: absolute;
+
+      left: 55%;
+      top: 55%;
+
+      width: 250px;
+      height: 160px;
+
+      border-radius: 24px;
+
+      background:
+        linear-gradient(
+          180deg,
+          rgba(16, 21, 31, 0.94),
+          rgba(10, 14, 22, 0.94)
+        );
+
+      border:
+        1px solid
+        rgba(
+          255,
+          255,
+          255,
+          0.10
+        );
+
+      box-shadow:
+        0 18px 45px
+        rgba(
+          0,
+          0,
+          0,
+          0.45
+        );
+
+      backdrop-filter:
+        blur(16px);
+
+      display: flex;
+
+      flex-direction: column;
+
+      align-items: center;
+      justify-content: center;
+
+      gap: 8px;
+
+      color: white;
+
+      z-index: 20;
+
+      user-select: none;
+
+      transition:
+        box-shadow 0.12s ease,
+        border-color 0.12s ease,
+        transform 0.12s ease;
+    }
+
+    .draggable-card.hovered {
+      border-color:
+        rgba(
+          83,
+          227,
+          255,
+          0.70
+        );
+
+      box-shadow:
+        0 0 30px
+        rgba(
+          54,
+          218,
+          255,
+          0.20
+        ),
+        0 18px 45px
+        rgba(
+          0,
+          0,
+          0,
+          0.45
+        );
+    }
+
+    .draggable-card.dragging {
+      border-color:
+        rgba(
+          83,
+          227,
+          255,
+          1
+        );
+
+      box-shadow:
+        0 0 40px
+        rgba(
+          54,
+          218,
+          255,
+          0.35
+        );
+
+      transform:
+        scale(1.03);
+    }
+
+    .card-title {
+      font-size: 18px;
+      font-weight: 800;
+
+      letter-spacing: 0.5px;
+    }
+
+    .card-subtitle {
+      font-size: 12px;
+
+      color: #8e9aa6;
+
+      text-align: center;
+
+      padding: 0 20px;
+    }
+
+    .card-indicator {
+      width: 36px;
+      height: 4px;
+
+      border-radius: 20px;
+
+      background: #48dfff;
+
+      box-shadow:
+        0 0 15px
+        rgba(
+          72,
+          223,
+          255,
+          0.6
+        );
+    }
+
+    .loading {
+      position: absolute;
+
+      left: 50%;
+      top: 50%;
+
+      transform:
+        translate(
+          -50%,
+          -50%
+        );
+
+      padding:
+        14px
+        20px;
+
+      border-radius: 12px;
+
+      background:
+        rgba(
+          0,
+          0,
+          0,
+          0.65
+        );
+
+      color: white;
+
+      z-index: 50;
+
+      font-size: 14px;
+    }
+  </style>
+</head>
+
+<body>
+
+  <div id="app">
+
+    <video
+      id="video"
+      autoplay
+      playsinline
+      muted
+    ></video>
+
+    <canvas
+      id="canvas"
+    ></canvas>
+
+    <div class="overlay"></div>
+
+    <div class="hud">
+
+      <div class="title">
+        NEXUS
+      </div>
+
+      <div class="subtitle">
+        Gesture Drag Test
+      </div>
+
+      <div class="status">
+
+        <div class="label">
+          Geste détecté
+        </div>
+
+        <div id="gesture">
+          NONE
+        </div>
+
+        <div id="handStatus">
+          Main : non détectée
+        </div>
+
+        <div id="pinchValue">
+          Pinch distance : -
+        </div>
+
+        <div id="dragStatus">
+          Drag : inactif
+        </div>
+
+      </div>
+
+      <div class="help">
+        ✋ Main ouverte → OPEN_HAND
+        <br>
+        👉 Index seul → POINT
+        <br>
+        🤏 Pouce + index → PINCH
+        <br><br>
+        Pour déplacer la card :
+        <br>
+        1. vise-la avec l’index
+        <br>
+        2. pince
+        <br>
+        3. garde le pincement
+        <br>
+        4. déplace ta main
+        <br>
+        5. relâche
+      </div>
+
+    </div>
+
+    <div id="cursor"></div>
+
+    <div
+      class="draggable-card"
+      id="dragCard"
+    >
+
+      <div class="card-indicator"></div>
+
+      <div class="card-title">
+        NEXUS CARD
+      </div>
+
+      <div class="card-subtitle">
+        Pince sur cette card puis déplace ta main.
+      </div>
+
+    </div>
+
+    <div
+      class="loading"
+      id="loading"
+    >
+      Chargement MediaPipe...
+    </div>
+
+  </div>
+
+
+  <script type="module">
+
+    import {
+      HandLandmarker,
+      FilesetResolver
+    }
+    from
+    "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/+esm";
+
+
+    // ==================================================
+    // DOM
+    // ==================================================
+
+    const video =
+      document.getElementById(
+        "video"
+      );
+
+
+    const canvas =
+      document.getElementById(
+        "canvas"
+      );
+
+
+    const ctx =
+      canvas.getContext(
+        "2d"
+      );
+
+
+    const gestureElement =
+      document.getElementById(
+        "gesture"
+      );
+
+
+    const handStatus =
+      document.getElementById(
+        "handStatus"
+      );
+
+
+    const pinchValue =
+      document.getElementById(
+        "pinchValue"
+      );
+
+
+    const dragStatus =
+      document.getElementById(
+        "dragStatus"
+      );
+
+
+    const cursor =
+      document.getElementById(
+        "cursor"
+      );
+
+
+    const dragCard =
+      document.getElementById(
+        "dragCard"
+      );
+
+
+    const loading =
+      document.getElementById(
+        "loading"
+      );
+
+
+    // ==================================================
+    // STATE
+    // ==================================================
+
+    let handLandmarker =
+      null;
+
+
+    let lastVideoTime =
+      -1;
+
+
+    let currentGesture =
+      "NONE";
+
+
+    let previousGesture =
+      "NONE";
+
+
+    let isDragging =
+      false;
+
+
+    let dragOffsetX =
+      0;
+
+
+    let dragOffsetY =
+      0;
+
+
+    let cursorX =
+      0;
+
+
+    let cursorY =
+      0;
+
+
+    // ==================================================
+    // SETTINGS
+    // ==================================================
+
+    const PINCH_START_THRESHOLD =
+      0.052;
+
+
+    const PINCH_RELEASE_THRESHOLD =
+      0.075;
+
+
+    // Lissage du curseur
+    const CURSOR_SMOOTHING =
+      0.35;
+
+
+    // ==================================================
+    // DISTANCE
+    // ==================================================
+
+    function distance(
+      a,
+      b
+    ) {
+
+      return Math.sqrt(
+
+        Math.pow(
+          a.x - b.x,
+          2
+        )
+
+        +
+
+        Math.pow(
+          a.y - b.y,
+          2
+        )
+      );
+    }
+
+
+    // ==================================================
+    // FINGER DETECTION
+    // ==================================================
+
+    function isFingerUp(
+      landmarks,
+      tipIndex,
+      pipIndex
+    ) {
+
+      return (
+        landmarks[
+          tipIndex
+        ].y
+        <
+        landmarks[
+          pipIndex
+        ].y
+      );
+    }
+
+
+    // ==================================================
+    // GESTURE DETECTION
+    // ==================================================
+
+    function detectGesture(
+      landmarks
+    ) {
+
+      const thumbTip =
+        landmarks[4];
+
+
+      const indexTip =
+        landmarks[8];
+
+
+      const pinchDistance =
+        distance(
+          thumbTip,
+          indexTip
+        );
+
+
+      pinchValue.textContent =
+        "Pinch distance : "
+        +
+        pinchDistance
+          .toFixed(3);
+
+
+      // Hystérésis :
+      // si on est déjà en PINCH,
+      // on attend une distance plus grande
+      // pour relâcher.
+      if (
+        currentGesture ===
+        "PINCH"
+      ) {
+
+        if (
+          pinchDistance
+          <
+          PINCH_RELEASE_THRESHOLD
+        ) {
+
+          return "PINCH";
+        }
+      }
+
+
+      if (
+        pinchDistance
+        <
+        PINCH_START_THRESHOLD
+      ) {
+
+        return "PINCH";
+      }
+
+
+      const indexUp =
+        isFingerUp(
+          landmarks,
+          8,
+          6
+        );
+
+
+      const middleUp =
+        isFingerUp(
+          landmarks,
+          12,
+          10
+        );
+
+
+      const ringUp =
+        isFingerUp(
+          landmarks,
+          16,
+          14
+        );
+
+
+      const pinkyUp =
+        isFingerUp(
+          landmarks,
+          20,
+          18
+        );
+
+
+      if (
+        indexUp
+        &&
+        middleUp
+        &&
+        ringUp
+        &&
+        pinkyUp
+      ) {
+
+        return "OPEN_HAND";
+      }
+
+
+      if (
+        indexUp
+        &&
+        !middleUp
+        &&
+        !ringUp
+        &&
+        !pinkyUp
+      ) {
+
+        return "POINT";
+      }
+
+
+      return "NONE";
+    }
+
+
+    // ==================================================
+    // HAND CONNECTIONS
+    // ==================================================
+
+    const connections = [
+
+      [0,1],
+      [1,2],
+      [2,3],
+      [3,4],
+
+      [0,5],
+      [5,6],
+      [6,7],
+      [7,8],
+
+      [5,9],
+      [9,10],
+      [10,11],
+      [11,12],
+
+      [9,13],
+      [13,14],
+      [14,15],
+      [15,16],
+
+      [13,17],
+      [17,18],
+      [18,19],
+      [19,20],
+
+      [0,17]
+
+    ];
+
+
+    // ==================================================
+    // DRAW HAND
+    // ==================================================
+
+    function drawHand(
+      landmarks
+    ) {
+
+      ctx.clearRect(
+        0,
+        0,
+        canvas.width,
+        canvas.height
+      );
+
+
+      ctx.lineWidth =
+        3;
+
+
+      ctx.strokeStyle =
+        "rgba(70, 220, 255, 0.75)";
+
+
+      for (
+        const connection
+        of connections
+      ) {
+
+        const a =
+          landmarks[
+            connection[0]
+          ];
+
+
+        const b =
+          landmarks[
+            connection[1]
+          ];
+
+
+        const ax =
+          canvas.width
+          -
+          a.x
+          *
+          canvas.width;
+
+
+        const ay =
+          a.y
+          *
+          canvas.height;
+
+
+        const bx =
+          canvas.width
+          -
+          b.x
+          *
+          canvas.width;
+
+
+        const by =
+          b.y
+          *
+          canvas.height;
+
+
+        ctx.beginPath();
+
+        ctx.moveTo(
+          ax,
+          ay
+        );
+
+        ctx.lineTo(
+          bx,
+          by
+        );
+
+        ctx.stroke();
+      }
+
+
+      for (
+        let i = 0;
+        i < landmarks.length;
+        i++
+      ) {
+
+        const point =
+          landmarks[i];
+
+
+        const x =
+          canvas.width
+          -
+          point.x
+          *
+          canvas.width;
+
+
+        const y =
+          point.y
+          *
+          canvas.height;
+
+
+        ctx.beginPath();
+
+        ctx.arc(
+          x,
+          y,
+          5,
+          0,
+          Math.PI * 2
+        );
+
+
+        if (
+          i === 4
+          ||
+          i === 8
+        ) {
+
+          ctx.fillStyle =
+            "#ffffff";
+
+        } else {
+
+          ctx.fillStyle =
+            "#46dcff";
+        }
+
+
+        ctx.fill();
+      }
+    }
+
+
+    // ==================================================
+    // CURSOR POSITION
+    // ==================================================
+
+    function getIndexScreenPosition(
+      landmarks
+    ) {
+
+      const indexTip =
+        landmarks[8];
+
+
+      const rawX =
+        window.innerWidth
+        -
+        indexTip.x
+        *
+        window.innerWidth;
+
+
+      const rawY =
+        indexTip.y
+        *
+        window.innerHeight;
+
+
+      // lissage
+      cursorX =
+        cursorX
+        +
+        (
+          rawX - cursorX
+        )
+        *
+        CURSOR_SMOOTHING;
+
+
+      cursorY =
+        cursorY
+        +
+        (
+          rawY - cursorY
+        )
+        *
+        CURSOR_SMOOTHING;
+
+
+      return {
+        x: cursorX,
+        y: cursorY
+      };
+    }
+
+
+    // ==================================================
+    // POINT INSIDE ELEMENT
+    // ==================================================
+
+    function pointInsideElement(
+      x,
+      y,
+      element
+    ) {
+
+      const rect =
+        element
+          .getBoundingClientRect();
+
+
+      return (
+        x >= rect.left
+        &&
+        x <= rect.right
+        &&
+        y >= rect.top
+        &&
+        y <= rect.bottom
+      );
+    }
+
+
+    // ==================================================
+    // DRAG START
+    // ==================================================
+
+    function startDrag(
+      x,
+      y
+    ) {
+
+      const rect =
+        dragCard
+          .getBoundingClientRect();
+
+
+      dragOffsetX =
+        x - rect.left;
+
+
+      dragOffsetY =
+        y - rect.top;
+
+
+      isDragging =
+        true;
+
+
+      dragCard.classList.add(
+        "dragging"
+      );
+
+
+      dragStatus.textContent =
+        "Drag : ACTIF";
+    }
+
+
+    // ==================================================
+    // DRAG UPDATE
+    // ==================================================
+
+    function updateDrag(
+      x,
+      y
+    ) {
+
+      if (
+        !isDragging
+      ) {
+        return;
+      }
+
+
+      let newLeft =
+        x - dragOffsetX;
+
+
+      let newTop =
+        y - dragOffsetY;
+
+
+      // empêcher la card de sortir de l'écran
+      const maxLeft =
+        window.innerWidth
+        -
+        dragCard.offsetWidth;
+
+
+      const maxTop =
+        window.innerHeight
+        -
+        dragCard.offsetHeight;
+
+
+      newLeft =
+        Math.max(
+          0,
+          Math.min(
+            newLeft,
+            maxLeft
+          )
+        );
+
+
+      newTop =
+        Math.max(
+          0,
+          Math.min(
+            newTop,
+            maxTop
+          )
+        );
+
+
+      dragCard.style.left =
+        `${newLeft}px`;
+
+
+      dragCard.style.top =
+        `${newTop}px`;
+    }
+
+
+    // ==================================================
+    // DRAG END
+    // ==================================================
+
+    function stopDrag() {
+
+      if (
+        !isDragging
+      ) {
+        return;
+      }
+
+
+      isDragging =
+        false;
+
+
+      dragCard.classList.remove(
+        "dragging"
+      );
+
+
+      dragStatus.textContent =
+        "Drag : inactif";
+    }
+
+
+    // ==================================================
+    // GESTURE INTERACTION
+    // ==================================================
+
+    function handleInteraction(
+      gesture,
+      x,
+      y
+    ) {
+
+      const overCard =
+        pointInsideElement(
+          x,
+          y,
+          dragCard
+        );
+
+
+      dragCard
+        .classList
+        .toggle(
+          "hovered",
+          overCard
+          &&
+          !isDragging
+        );
+
+
+      // pinch vient juste de commencer
+      const pinchJustStarted =
+        gesture === "PINCH"
+        &&
+        previousGesture !== "PINCH";
+
+
+      // pinch vient juste d'être relâché
+      const pinchJustReleased =
+        gesture !== "PINCH"
+        &&
+        previousGesture === "PINCH";
+
+
+      if (
+        pinchJustStarted
+        &&
+        overCard
+      ) {
+
+        startDrag(
+          x,
+          y
+        );
+      }
+
+
+      if (
+        isDragging
+        &&
+        gesture === "PINCH"
+      ) {
+
+        updateDrag(
+          x,
+          y
+        );
+      }
+
+
+      if (
+        pinchJustReleased
+      ) {
+
+        stopDrag();
+      }
+
+
+      previousGesture =
+        gesture;
+    }
+
+
+    // ==================================================
+    // CURSOR
+    // ==================================================
+
+    function updateCursor(
+      landmarks
+    ) {
+
+      const position =
+        getIndexScreenPosition(
+          landmarks
+        );
+
+
+      cursor.style.display =
+        "block";
+
+
+      cursor.style.left =
+        `${position.x}px`;
+
+
+      cursor.style.top =
+        `${position.y}px`;
+
+
+      handleInteraction(
+        currentGesture,
+        position.x,
+        position.y
+      );
+    }
+
+
+    // ==================================================
+    // UI
+    // ==================================================
+
+    function updateGestureUI(
+      gesture
+    ) {
+
+      currentGesture =
+        gesture;
+
+
+      gestureElement.textContent =
+        gesture;
+
+
+      cursor.classList.remove(
+        "pinch"
+      );
+
+
+      if (
+        gesture ===
+        "PINCH"
+      ) {
+
+        gestureElement.style.color =
+          "#ffffff";
+
+
+        cursor.classList.add(
+          "pinch"
+        );
+
+      } else if (
+        gesture ===
+        "OPEN_HAND"
+      ) {
+
+        gestureElement.style.color =
+          "#57ef9b";
+
+      } else if (
+        gesture ===
+        "POINT"
+      ) {
+
+        gestureElement.style.color =
+          "#5de6ff";
+
+      } else {
+
+        gestureElement.style.color =
+          "#8995a1";
+      }
+    }
+
+
+    // ==================================================
+    // CAMERA
+    // ==================================================
+
+    async function startCamera() {
+
+      const stream =
+        await navigator.mediaDevices
+          .getUserMedia({
+            video: {
+              width: {
+                ideal: 1280
+              },
+
+              height: {
+                ideal: 720
+              },
+
+              facingMode:
+                "user"
+            },
+
+            audio:
+              false
+          });
+
+
+      video.srcObject =
+        stream;
+
+
+      await video.play();
+    }
+
+
+    // ==================================================
+    // MEDIAPIPE
+    // ==================================================
+
+    async function createHandLandmarker() {
+
+      const vision =
+        await FilesetResolver
+          .forVisionTasks(
+            "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm"
+          );
+
+
+      handLandmarker =
+        await HandLandmarker
+          .createFromOptions(
+            vision,
+            {
+
+              baseOptions: {
+
+                modelAssetPath:
+                  "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
+
+                delegate:
+                  "GPU"
+              },
+
+
+              runningMode:
+                "VIDEO",
+
+
+              numHands:
+                1,
+
+
+              minHandDetectionConfidence:
+                0.6,
+
+
+              minHandPresenceConfidence:
+                0.6,
+
+
+              minTrackingConfidence:
+                0.6
+            }
+          );
+    }
+
+
+    // ==================================================
+    // DETECTION LOOP
+    // ==================================================
+
+    function detectLoop() {
+
+      canvas.width =
+        window.innerWidth;
+
+
+      canvas.height =
+        window.innerHeight;
+
+
+      if (
+        video.readyState >= 2
+        &&
+        handLandmarker
+      ) {
+
+        if (
+          video.currentTime
+          !==
+          lastVideoTime
+        ) {
+
+          lastVideoTime =
+            video.currentTime;
+
+
+          const result =
+            handLandmarker
+              .detectForVideo(
+                video,
+                performance.now()
+              );
+
+
+          if (
+            result.landmarks
+            &&
+            result.landmarks.length
+            >
+            0
+          ) {
+
+            const landmarks =
+              result.landmarks[0];
+
+
+            handStatus.textContent =
+              "Main : détectée";
+
+
+            drawHand(
+              landmarks
+            );
+
+
+            const gesture =
+              detectGesture(
+                landmarks
+              );
+
+
+            updateGestureUI(
+              gesture
+            );
+
+
+            updateCursor(
+              landmarks
+            );
+
+          } else {
+
+            ctx.clearRect(
+              0,
+              0,
+              canvas.width,
+              canvas.height
+            );
+
+
+            handStatus.textContent =
+              "Main : non détectée";
+
+
+            pinchValue.textContent =
+              "Pinch distance : -";
+
+
+            updateGestureUI(
+              "NONE"
+            );
+
+
+            cursor.style.display =
+              "none";
+
+
+            dragCard
+              .classList
+              .remove(
+                "hovered"
+              );
+
+
+            stopDrag();
+
+
+            previousGesture =
+              "NONE";
+          }
+        }
+      }
+
+
+      requestAnimationFrame(
+        detectLoop
+      );
+    }
+
+
+    // ==================================================
+    // INIT
+    // ==================================================
+
+    async function init() {
+
+      try {
+
+        await createHandLandmarker();
+
+
+        await startCamera();
+
+
+        // initialise le curseur au centre
+        cursorX =
+          window.innerWidth / 2;
+
+
+        cursorY =
+          window.innerHeight / 2;
+
+
+        loading.style.display =
+          "none";
+
+
+        detectLoop();
+
+      } catch (
+        error
+      ) {
+
+        console.error(
+          error
+        );
+
+
+        loading.textContent =
+          "Erreur webcam / MediaPipe";
+
+
+        loading.style.color =
+          "#ff617a";
+      }
+    }
+
+
+    init();
+
+  </script>
+
+</body>
+</html>
