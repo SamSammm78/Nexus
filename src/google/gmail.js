@@ -78,80 +78,47 @@ function getHeader(
 }
 
 
-function decodeBase64Url(
-  data
-) {
+function decodeBase64Url(data) {
+  if (!data) return "";
 
-  if (!data) {
-    return "";
-  }
+  const normalized = data
+    .replace(/-/g, "+")
+    .replace(/_/g, "/");
 
-  return Buffer
-    .from(
-      data,
-      "base64url"
-    )
-    .toString(
-      "utf8"
-    );
+  return Buffer.from(normalized, "base64").toString("utf-8");
 }
 
+function extractBodies(payload) {
+  const plainParts = [];
+  const htmlParts = [];
 
-function extractBody(
-  payload
-) {
+  function walk(part) {
+    if (!part) return;
 
-  if (!payload) {
-    return "";
-  }
+    const mimeType = part.mimeType || "";
+    const bodyData = part.body?.data;
 
-
-  if (
-    payload.mimeType ===
-    "text/plain" &&
-    payload.body?.data
-  ) {
-
-    return decodeBase64Url(
-      payload.body.data
-    );
-  }
-
-
-  const parts =
-    payload.parts ?? [];
-
-
-  for (
-    const part of parts
-  ) {
-
-    if (
-      part.mimeType ===
-      "text/plain" &&
-      part.body?.data
-    ) {
-
-      return decodeBase64Url(
-        part.body.data
-      );
+    if (mimeType === "text/plain" && bodyData) {
+      plainParts.push(decodeBase64Url(bodyData));
     }
 
+    if (mimeType === "text/html" && bodyData) {
+      htmlParts.push(decodeBase64Url(bodyData));
+    }
 
-    const nested =
-      extractBody(
-        part
-      );
-
-
-    if (nested) {
-
-      return nested;
+    if (Array.isArray(part.parts)) {
+      for (const child of part.parts) {
+        walk(child);
+      }
     }
   }
 
+  walk(payload);
 
-  return "";
+  return {
+    plain: plainParts.join("\n\n").trim(),
+    html: htmlParts.join("\n\n").trim(),
+  };
 }
 
 
@@ -160,7 +127,7 @@ function extractBody(
 // ======================================================
 
 export async function getRecentEmails({
-  maxResults = 5,
+  maxResults = 20,
   query = "",
 } = {}) {
 
@@ -299,87 +266,56 @@ export async function searchEmails({
 // LECTURE D'UN MAIL
 // ======================================================
 
-export async function readEmail({
-  id,
-}) {
+export async function readEmail(messageId) {
+  const gmail = await getGmail();
 
-  if (!id) {
+  const response = await gmail.users.messages.get({
+    userId: "me",
+    id: messageId,
+    format: "full",
+  });
 
-    throw new Error(
-      "id est obligatoire."
-    );
-  }
-
-
-  const gmail =
-    await getGmailClient();
-
-
-  const response =
-    await gmail.users
-      .messages.get({
-
-        userId:
-          "me",
-
-        id,
-
-        format:
-          "full",
-      });
-
-
-  const email =
-    response.data;
-
+  const message = response.data;
 
   const headers =
-    email.payload
-      ?.headers
-    ?? [];
+    message.payload?.headers || [];
 
+  const getHeader = (name) =>
+    headers.find(
+      h =>
+        h.name.toLowerCase() ===
+        name.toLowerCase()
+    )?.value || "";
+
+  const bodies =
+    extractBodies(message.payload);
+
+  let body = bodies.plain;
+
+  if (!body && bodies.html) {
+    body = bodies.html
+      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
+      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
+      .replace(/<br\s*\/?>/gi, "\n")
+      .replace(/<\/p>/gi, "\n\n")
+      .replace(/<[^>]+>/g, "")
+      .replace(/&nbsp;/g, " ")
+      .replace(/&amp;/g, "&")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .trim();
+  }
 
   return {
+    id: message.id,
+    threadId: message.threadId,
 
-    id:
-      email.id,
+    from: getHeader("From"),
+    to: getHeader("To"),
+    subject: getHeader("Subject"),
+    date: getHeader("Date"),
 
-    threadId:
-      email.threadId,
-
-    from:
-      getHeader(
-        headers,
-        "From"
-      ),
-
-    to:
-      getHeader(
-        headers,
-        "To"
-      ),
-
-    subject:
-      getHeader(
-        headers,
-        "Subject"
-      ),
-
-    date:
-      getHeader(
-        headers,
-        "Date"
-      ),
-
-    snippet:
-      email.snippet
-      ?? "",
-
-    body:
-      extractBody(
-        email.payload
-      ),
-
+    body,
   };
 }
 

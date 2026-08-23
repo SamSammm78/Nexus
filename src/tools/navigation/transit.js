@@ -713,10 +713,6 @@ execute: async ({
 }) => {
 
 
-    console.log(
-      `[IDFM : ${from} → ${to}]`
-    );
-
 
     // ==================================================
     // TROUVER LES LIEUX
@@ -732,16 +728,6 @@ execute: async ({
       await findPlace(
         to
       );
-
-
-    console.log(
-      `[IDFM départ : ${origin.name}]`
-    );
-
-    console.log(
-      `[IDFM arrivée : ${destination.name}]`
-    );
-
 
     // ==================================================
     // PARAMÈTRES DU TRAJET
@@ -777,15 +763,6 @@ execute: async ({
       "datetime_represents",
       datetimeRepresents
     );
-
-    console.log(
-      `[IDFM datetime : ${finalDateTime}]`
-    );
-
-    console.log(
-      `[IDFM datetime représente : ${datetimeRepresents}]`
-    );
-
 
     // ==================================================
     // APPEL JOURNEYS

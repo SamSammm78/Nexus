@@ -287,11 +287,6 @@ notamment après get_transit_journey.
   lineId,
   }) => {
 
-    console.log(
-      `[IDFM trafic : ${lineId ?? line ?? "réseau"}]`
-    );
-
-
     let data;
 
 

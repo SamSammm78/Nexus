@@ -295,12 +295,6 @@ utiliser get_transit_journey.
     to,
   }) => {
 
-
-    console.log(
-      `[ORS voiture : ${from} → ${to}]`
-    );
-
-
     // ==================================================
     // 1. GÉOCODAGE
     // ==================================================
@@ -315,16 +309,6 @@ utiliser get_transit_journey.
       await geocodePlace(
         to
       );
-
-
-    console.log(
-      `[ORS départ : ${origin.name}]`
-    );
-
-    console.log(
-      `[ORS arrivée : ${destination.name}]`
-    );
-
 
     // ==================================================
     // 2. CALCUL DU TRAJET
@@ -424,13 +408,6 @@ utiliser get_transit_journey.
     // ==========================================
     // MAP
     // ==========================================
-
-    console.log(
-      "[ORS geometry]",
-      mapResult.geometry?.type,
-      mapResult.geometry?.coordinates?.length
-    );
-
 
     await sendRouteToMap(
       mapResult

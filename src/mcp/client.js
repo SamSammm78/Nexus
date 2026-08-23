@@ -38,9 +38,6 @@ export async function connectMcpServers() {
       });
     }
 
-    console.log(
-      `[MCP connecté : ${name}]`
-    );
   }
 
   return tools;

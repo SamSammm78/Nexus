@@ -1,5 +1,3 @@
-import readline from "node:readline";
-
 import { ai } from "../config/gemini.js";
 import { systemPrompt } from "./systemPrompt.js";
 
@@ -14,689 +12,390 @@ import {
   executeNativeTool,
 } from "../tools/index.js";
 
-import {
-  routeRequest,
-} from "./router.js";
-
-import {
-  startMapServer
-} from "../map/server.js";
+import { routeRequest } from "./router.js";
+import { startMapServer } from "../map/server.js";
 
 import {
   addUserMessage,
   addAssistantMessage,
   getHistory,
-  clearHistory,
 } from "../memory/shortTerm.js";
 
-import {
-  generateText,
-} from "../models/index.js";
+
+// ============================================================
+// STATE
+// ============================================================
+
+let mcpTools = [];
+let playwrightDeclarations = [];
+let nexusInitialized = false;
+let initializationPromise = null;
 
 
-// ======================================================
-// CRÉATION D'UN CHAT GEMINI AVEC UNIQUEMENT
-// LES OUTILS NÉCESSAIRES
-// ======================================================
+// ============================================================
+// GEMINI CHAT
+// ============================================================
 
-function createChat(
-  toolDeclarations = [],
-  history = []
-) {
-
+function createChat(toolDeclarations = [], history = []) {
   const config = {
-
-    systemInstruction:
-      systemPrompt,
-
+    systemInstruction: systemPrompt,
     thinkingConfig: {
-      thinkingLevel:
-        "minimal",
+      thinkingLevel: "minimal",
     },
   };
 
-
-  if (
-    toolDeclarations.length > 0
-  ) {
-
+  if (toolDeclarations.length) {
     config.tools = [
       {
-        functionDeclarations:
-          toolDeclarations,
+        functionDeclarations: toolDeclarations,
       },
     ];
   }
 
-
   return ai.chats.create({
-
-    model:
-      "gemini-3.5-flash-lite",
-
+    model: "gemini-3.5-flash-lite",
     history,
-
     config,
   });
 }
 
 
-// ======================================================
-// DÉMARRAGE DE NEXUS
-// ======================================================
+// ============================================================
+// INITIALISATION
+// ============================================================
 
 export async function startNexus() {
+  if (nexusInitialized) return;
 
-  console.log(
-    "Initialisation de NEXUS..."
-  );
+  // Évite deux initialisations simultanées.
+  if (initializationPromise) {
+    return initializationPromise;
+  }
 
-  // DÉMARRAGE DU SERVEUR MAP
-  startMapServer();
+  initializationPromise = (async () => {
+    console.log("Initialisation de NEXUS...");
 
-  // ====================================================
-  // 1. CONNEXION AUX SERVEURS MCP
-  // ====================================================
+    startMapServer();
 
-  const mcpTools =
-    await connectMcpServers();
+    mcpTools = await connectMcpServers();
 
-
-  console.log(
-    `${mcpTools.length} outils MCP chargés.`
-  );
-
-
-  // ====================================================
-  // 2. RÉCUPÉRATION DES OUTILS PLAYWRIGHT
-  // ====================================================
-
-  const playwrightTools =
-    mcpTools.filter(
-      item =>
-        item.server ===
-        "playwright"
-    );
-
-
-  const playwrightDeclarations =
-    playwrightTools.map(
-      ({ server, tool }) => ({
-
-        name:
-          tool.name,
-
+    playwrightDeclarations = mcpTools
+      .filter(item => item.server === "playwright")
+      .map(({ server, tool }) => ({
+        name: tool.name,
         description:
           tool.description ??
           `Outil Playwright ${server}`,
-
         parameters:
           tool.inputSchema ?? {
             type: "object",
             properties: {},
           },
-
-      })
-    );
+      }));
 
 
-  console.log(
-    `${playwrightDeclarations.length} outils Playwright disponibles.`
+    nexusInitialized = true;
+  })();
+
+  try {
+    await initializationPromise;
+  } catch (error) {
+    // Autorise une nouvelle tentative si l'initialisation échoue.
+    initializationPromise = null;
+    nexusInitialized = false;
+
+    throw error;
+  }
+}
+
+
+// ============================================================
+// ROUTE → TOOLS
+// ============================================================
+
+function getToolsForRoute(route) {
+  switch (route) {
+    case "WEB_SEARCH":
+      return [
+        getNativeDeclaration("search_web"),
+      ].filter(Boolean);
+
+    case "NATIVE":
+      return getNativeDeclarations().filter(
+        tool => tool.name !== "search_web"
+      );
+
+    case "BROWSER":
+      return playwrightDeclarations;
+
+    case "NAVIGATION":
+      return [
+        getNativeDeclaration("get_transit_journey"),
+        getNativeDeclaration("get_transit_disruptions"),
+        getNativeDeclaration("get_driving_route"),
+      ].filter(Boolean);
+
+    case "WEATHER":
+      return [
+        getNativeDeclaration("get_weather_data"),
+      ].filter(Boolean);
+
+    case "GMAIL":
+      return [
+        getNativeDeclaration("get_recent_emails"),
+        getNativeDeclaration("search_emails"),
+        getNativeDeclaration("read_email"),
+        getNativeDeclaration("create_email_draft"),
+        getNativeDeclaration("get_email_drafts"),
+        getNativeDeclaration("create_reply_draft"),
+        getNativeDeclaration("mark_email_read"),
+        getNativeDeclaration("mark_email_unread"),
+        getNativeDeclaration("archive_email"),
+        getNativeDeclaration("trash_email"),
+        getNativeDeclaration("send_email_draft"),
+      ].filter(Boolean);
+
+    case "DIRECT":
+    default:
+      return [];
+  }
+}
+
+
+// ============================================================
+// TOOL EXECUTION
+// ============================================================
+
+async function executeTool(call) {
+  const toolName = call.name;
+  const args = call.args ?? {};
+
+  const nativeTool = getNativeDeclarations().find(
+    tool => tool.name === toolName
   );
 
-
-  // ====================================================
-  // 3. CHOIX DES OUTILS SELON LA ROUTE
-  // ====================================================
-
-  function getToolsForRoute(
-    route
-  ) {
-
-    switch (route) {
-
-
-      // ================================================
-      // RECHERCHE WEB
-      // ================================================
-
-      case "WEB_SEARCH":
-
-        return [
-          getNativeDeclaration(
-            "search_web"
-          ),
-        ].filter(Boolean);
-
-
-      // ================================================
-      // OUTILS NATIFS
-      // ================================================
-
-      case "NATIVE":
-
-        return getNativeDeclarations()
-          .filter(
-            tool =>
-              tool.name !==
-              "search_web"
-          );
-
-
-      // ================================================
-      // NAVIGATEUR
-      // ================================================
-
-      case "BROWSER":
-
-        return playwrightDeclarations;
-
-
-      // ================================================
-      // NAVIGATION / IDFM
-      // ================================================
-
-      case "NAVIGATION":
-
-        return [
-
-          getNativeDeclaration(
-            "get_transit_journey"
-          ),
-
-          getNativeDeclaration(
-            "get_transit_disruptions"
-          ),
-
-          getNativeDeclaration(
-            "get_driving_route"
-          ),
-
-        ].filter(Boolean);
-
-      // ================================================
-      // MÉTÉO
-      // ================================================
-
-      case "WEATHER":
-
-        return [
-          getNativeDeclaration(
-            "get_weather_data"
-          ),
-        ].filter(Boolean);
-
-      // ================================================
-      // GMAIL
-      // ================================================
-
-     case "GMAIL":
-  return [
-    getNativeDeclaration("get_recent_emails"),
-    getNativeDeclaration("search_emails"),
-    getNativeDeclaration("read_email"),
-
-    getNativeDeclaration("create_email_draft"),
-    getNativeDeclaration("get_email_drafts"),
-    getNativeDeclaration("create_reply_draft"),
-
-    getNativeDeclaration("mark_email_read"),
-    getNativeDeclaration("mark_email_unread"),
-    getNativeDeclaration("archive_email"),
-    getNativeDeclaration("trash_email"),
-
-    getNativeDeclaration("send_email_draft"),
-  ].filter(Boolean);
-
-      // ================================================
-      // RÉPONSE DIRECTE
-      // ================================================
-
-      case "DIRECT":
-      default:
-
-        return [];
-    }
-  }
-
-
-  // ====================================================
-  // 4. EXÉCUTION D'UN OUTIL
-  // ====================================================
-
-  async function executeTool(
-    call
-  ) {
-
-    const toolName =
-      call.name;
-
-    const args =
-      call.args ?? {};
-
-
-    // ==================================================
-    // OUTILS NATIFS
-    // ==================================================
-
-    const nativeTool =
-      getNativeDeclarations()
-        .find(
-          tool =>
-            tool.name ===
-            toolName
-        );
-
-
-    if (nativeTool) {
-
-      console.log(
-        `[outil natif : ${toolName}]`
-      );
-
-
-      return await executeNativeTool(
-        toolName,
-        args
-      );
-    }
-
-
-    // ==================================================
-    // OUTILS MCP
-    // ==================================================
-
-    const mcpTool =
-      mcpTools.find(
-        item =>
-          item.tool.name ===
-          toolName
-      );
-
-
-    if (mcpTool) {
-
-      console.log(
-        `[outil MCP : ${mcpTool.server}/${toolName}]`
-      );
-
-
-      return await callMcpTool(
-        mcpTool.server,
-        toolName,
-        args
-      );
-    }
-
-
-    throw new Error(
-      `Outil inconnu : ${toolName}`
+  if (nativeTool) {
+    return executeNativeTool(
+      toolName,
+      args
     );
   }
 
+  const mcpTool = mcpTools.find(
+    item => item.tool.name === toolName
+  );
 
-  // ====================================================
-  // 5. TERMINAL
-  // ====================================================
+  if (mcpTool) {
+    return callMcpTool(
+      mcpTool.server,
+      toolName,
+      args
+    );
+  }
 
-  const rl =
-    readline.createInterface({
+  throw new Error(
+    `Outil inconnu : ${toolName}`
+  );
+}
 
-      input:
-        process.stdin,
 
-      output:
-        process.stdout,
+// ============================================================
+// NEXUS CORE
+// ============================================================
 
+export async function askNexus(
+  message,
+  { onEvent = () => {} } = {}
+) {
+  if (!message?.trim()) return "";
+
+  await startNexus();
+
+  try {
+    const memory = getHistory();
+
+    // --------------------------------------------------------
+    // ROUTING
+    // --------------------------------------------------------
+
+    onEvent({
+      type: "thinking",
     });
 
+    const route = await routeRequest(
+      message,
+      memory
+    );
 
-  console.log(
-    "\nNEXUS démarré."
-  );
+    onEvent({
+      type: "route",
+      route,
+    });
 
-  console.log(
-    "Tape 'exit' pour quitter."
-  );
+    // --------------------------------------------------------
+    // TOOLS
+    // --------------------------------------------------------
 
+    const selectedTools =
+      getToolsForRoute(route);
 
-  // ====================================================
-  // 6. BOUCLE DE CONVERSATION
-  // ====================================================
+    onEvent({
+      type: "tools_selected",
+      tools: selectedTools.map(
+        tool => tool.name
+      ),
+    });
 
-  function askQuestion() {
+    // --------------------------------------------------------
+    // GEMINI
+    // --------------------------------------------------------
 
-    rl.question(
-      "\nToi > ",
+    const chat = createChat(
+      selectedTools,
+      memory
+    );
 
-      async (message) => {
+    let response = await chat.sendMessage({
+      message,
+    });
 
+    // --------------------------------------------------------
+    // AGENT LOOP
+    // --------------------------------------------------------
 
-        // ==============================================
-        // MESSAGE VIDE
-        // ==============================================
+    let step = 0;
+    const maxSteps = 25;
 
-        if (
-          !message.trim()
-        ) {
+    while (
+      response.functionCalls?.length &&
+      step < maxSteps
+    ) {
+      step++;
 
-          askQuestion();
+      onEvent({
+        type: "step",
+        step,
+      });
 
-          return;
-        }
+      const functionResponses = [];
 
+      for (const call of response.functionCalls) {
+        const toolName = call.name;
 
-        // ==============================================
-        // QUITTER NEXUS
-        // ==============================================
+        onEvent({
+          type: "tool_start",
+          tool: toolName,
+          args: call.args ?? {},
+        });
 
-        if (
-          message
-            .trim()
-            .toLowerCase() ===
-            "exit" ||
-
-          message
-            .trim()
-            .toLowerCase() ===
-            "quit"
-        ) {
-
-          console.log(
-            "\nNEXUS > À bientôt."
-          );
-
-          rl.close();
-
-          return;
-        }
-
+        let result;
 
         try {
-
-
-          // ============================================
-          // 7. ROUTAGE
-          // ============================================
-
-          const memory = getHistory();
-
-          const route =
-            await routeRequest(
-              message,
-              memory
-            );
-
-
-          console.log(
-            `[Route : ${route}]`
-          );
-
-          
-
-          // ============================================
-          // 8. CHOIX DES OUTILS
-          // ============================================
-
-          const selectedTools =
-            getToolsForRoute(
-              route
-            );
-
-
-          console.log(
-            `[Outils exposés : ${selectedTools.length}]`
-          );
-
-
-          if (
-            selectedTools.length > 0
-          ) {
-
-            console.log(
-              selectedTools
-                .map(
-                  tool =>
-                    `- ${tool.name}`
-                )
-                .join("\n")
-            );
-          }
-
-
-          // ============================================
-          // 9. CRÉATION DU CHAT
-          // ============================================
-
-          const chat =
-          createChat(
-            selectedTools,
-            memory
-          );
-
-
-          // ============================================
-          // 10. PREMIER MESSAGE VERS GEMINI
-          // ============================================
-
-          let response =
-            await chat.sendMessage({
-
-              message,
-
-            });
-
-
-          // ============================================
-          // 11. BOUCLE AGENTIQUE
-          // ============================================
-
-          let step = 0;
-
-          const maxSteps =
-            25;
-
-
-          while (
-            response
-              .functionCalls
-              ?.length &&
-
-            step <
-              maxSteps
-          ) {
-
-            step++;
-
-
-            console.log(
-              `\n--- Étape ${step} ---`
-            );
-
-
-            const functionResponses =
-              [];
-
-
-            // Gemini peut demander
-            // plusieurs outils dans
-            // une même réponse.
-
-            for (
-              const call
-              of response.functionCalls
-            ) {
-
-
-              console.log(
-                `Gemini demande : ${call.name}`
-              );
-
-
-              console.log(
-                "Arguments :",
-                call.args ?? {}
-              );
-
-
-              // ========================================
-              // EXÉCUTION RÉELLE DE L'OUTIL
-              // ========================================
-
-              let result;
-
-
-              try {
-
-                result =
-                  await executeTool(
-                    call
-                  );
-
-              }
-
-              catch (
-                toolError
-              ) {
-
-                console.error(
-                  `Erreur outil ${call.name} :`,
-                  toolError
-                );
-
-
-                result = {
-
-                  error:
-                    true,
-
-                  message:
-                    toolError.message ??
-                    String(
-                      toolError
-                    ),
-                };
-              }
-
-
-              console.log(
-                "Résultat reçu."
-              );
-
-
-              // ========================================
-              // RÉSULTAT RENVOYÉ À GEMINI
-              // ========================================
-
-              functionResponses.push({
-
-                functionResponse: {
-
-                  id:
-                    call.id,
-
-                  name:
-                    call.name,
-
-                  response: {
-                    result,
-                  },
-                },
-              });
-            }
-
-
-            // ==========================================
-            // GEMINI REÇOIT LES RÉSULTATS
-            // ==========================================
-
-            response =
-              await chat.sendMessage({
-
-                message:
-                  functionResponses,
-
-              });
-          }
-
-
-          // ============================================
-          // 12. PROTECTION CONTRE BOUCLE INFINIE
-          // ============================================
-
-          if (
-            step >=
-            maxSteps
-          ) {
-
-            console.log(
-              "\nNEXUS > J'ai interrompu la tâche car elle demandait trop d'étapes."
-            );
-          }
-
-          else {
-
-
-            // ==========================================
-            // 13. RÉPONSE FINALE
-            // ==========================================
-
-            const answer =
-              response.text
-                ?.trim();
-
-
-            if (
-              answer
-            ) {
-              addUserMessage(
-                message
-              );
-
-              addAssistantMessage(
-                answer
-              );
-
-              console.log(
-                "\nNEXUS >",
-                answer
-              );
-            }
-
-            else {
-
-              console.log(
-                "\nNEXUS > Aucun texte retourné."
-              );
-            }
-          }
-
+          result = await executeTool(call);
+
+          onEvent({
+            type: "tool_end",
+            tool: toolName,
+          });
+        } catch (error) {
+          result = {
+            error: true,
+            message:
+              error?.message ??
+              String(error),
+          };
+
+          onEvent({
+            type: "tool_error",
+            tool: toolName,
+            error: result.message,
+          });
         }
 
-        catch (
-          error
-        ) {
-
-          console.error(
-            "\nErreur NEXUS :",
-            error
-          );
-        }
-
-
-        // ==============================================
-        // QUESTION SUIVANTE
-        // ==============================================
-
-        askQuestion();
+        functionResponses.push({
+          functionResponse: {
+            id: call.id,
+            name: toolName,
+            response: {
+              result,
+            },
+          },
+        });
       }
+
+      // Gemini réfléchit de nouveau après les tools.
+      onEvent({
+        type: "thinking",
+      });
+
+      response = await chat.sendMessage({
+        message: functionResponses,
+      });
+    }
+
+    // --------------------------------------------------------
+    // LOOP PROTECTION
+    // --------------------------------------------------------
+
+    if (
+      step >= maxSteps &&
+      response.functionCalls?.length
+    ) {
+      const answer =
+        "J'ai interrompu la tâche car elle demandait trop d'étapes.";
+
+      saveConversation(
+        message,
+        answer
+      );
+
+      onEvent({
+        type: "final",
+        text: answer,
+      });
+
+      return answer;
+    }
+
+    // --------------------------------------------------------
+    // FINAL RESPONSE
+    // --------------------------------------------------------
+
+    const answer =
+      response.text?.trim() ||
+      "Aucun texte retourné.";
+
+    saveConversation(
+      message,
+      answer
     );
+
+    onEvent({
+      type: "final",
+      text: answer,
+    });
+
+    return answer;
+
+  } catch (error) {
+    onEvent({
+      type: "error",
+      error,
+    });
+
+    throw error;
   }
+}
 
 
-  // ====================================================
-  // 14. LANCEMENT
-  // ====================================================
+// ============================================================
+// MEMORY
+// ============================================================
 
-  askQuestion();
+function saveConversation(
+  userMessage,
+  assistantMessage
+) {
+  addUserMessage(userMessage);
+  addAssistantMessage(assistantMessage);
 }

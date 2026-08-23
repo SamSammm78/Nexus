@@ -60,9 +60,6 @@ export async function sendRouteToMap(
     "utf8"
   );
 
-  console.log(
-    `[MAP] Trajet envoyé : ${mapData.origin} → ${mapData.destination}`
-  );
 
   return mapData;
 }
@@ -161,12 +158,6 @@ export async function sendTransitRouteToMap(
     ),
     "utf8"
   );
-
-
-  console.log(
-    `[MAP] Trajet transport envoyé : ${mapData.origin} → ${mapData.destination}`
-  );
-
 
   return mapData;
 }

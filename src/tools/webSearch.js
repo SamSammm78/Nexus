@@ -52,11 +52,6 @@ export const webSearchTool = {
     query
   }) {
 
-    console.log(
-      `[Tavily : ${query}]`
-    );
-
-
     const result =
       await tvly.search(
         query,
