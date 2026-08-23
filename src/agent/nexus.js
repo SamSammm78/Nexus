@@ -13,7 +13,7 @@ import {
 } from "../tools/index.js";
 
 import { routeRequest } from "./router.js";
-import { startMapServer } from "../map/server.js";
+import { startMapServer } from "../services/map/server.js";
 
 import {
   addUserMessage,
@@ -162,6 +162,14 @@ function getToolsForRoute(route) {
         getNativeDeclaration("getDeviceState"),
         getNativeDeclaration("setCountdown")
       ].filter(Boolean);
+
+
+    case "NAS":
+      return [
+        getNativeDeclaration("wake_on_lan_nas"),
+        getNativeDeclaration("listSharedFoldersNas"),
+        getNativeDeclaration("listNasFoldersNas")
+      ].filter(Boolean)
 
     case "DIRECT":
     default:

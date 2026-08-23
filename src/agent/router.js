@@ -9,7 +9,8 @@ const VALID_ROUTES = [
   "NAVIGATION",
   "WEATHER",
   "GMAIL",
-  "HOME_AUTOMATION"
+  "HOME_AUTOMATION",
+  "NAS"
 ];
 
 export async function routeRequest(
@@ -180,6 +181,12 @@ Exemples :
 Allume la lumière de mon bureau
 Eteins la lumiere de mon bureau
 
+NAS
+Utiliser lorsqu'une demande concerne le serveur nas
+
+Exemples :
+Lancer le serveur nas via Wake On LAN
+
 
 RÈGLES IMPORTANTES :
 
@@ -205,6 +212,7 @@ NATIVE
 WEATHER
 GMAIL
 HOME_AUTOMATION
+NAS
 ou
 NAVIGATION
 

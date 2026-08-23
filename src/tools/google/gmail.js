@@ -10,7 +10,7 @@ import {
   archiveEmail,
   trashEmail,
   sendDraft,
-} from "../../google/gmail.js";
+} from "../../services/google/gmail.js";
 
 export const gmailTools = [
   {

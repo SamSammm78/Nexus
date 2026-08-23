@@ -1262,10 +1262,6 @@ function shutdown() {
   "",
   `{${COLORS.muted}-fg}Commandes disponibles : /help{/}`,
   "",
-  `{${COLORS.muted}-fg}Exemples :{/}`,
-  `{${COLORS.muted}-fg}• bonjour{/}`,
-  `{${COLORS.muted}-fg}• regarde mes mails{/}`,
-  `{${COLORS.muted}-fg}• calcule un trajet{/}`,
 ].forEach(line =>
   conversationPanel.pushLine(line)
 );

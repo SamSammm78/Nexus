@@ -26,6 +26,7 @@ import {
   getDeviceState,
   setCountdown
 } from "./home_automation.js"
+import { wake_on_lan_nas, listSharedFoldersNas, listNasFoldersNas } from "./nas.js";
 
 export const nativeTools = [
   timeTool,
@@ -41,7 +42,11 @@ export const nativeTools = [
   changeDeviceState,
   getDeviceId,
   getDeviceState,
-  setCountdown
+  setCountdown,
+
+  wake_on_lan_nas,
+  listSharedFoldersNas,
+  listNasFoldersNas
 ];
 
 
