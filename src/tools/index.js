@@ -20,6 +20,12 @@ import {
   gmailTools,
 } from "./google/gmail.js";
 
+import {
+  changeDeviceState,
+  getDeviceId,
+  getDeviceState,
+  setCountdown
+} from "./home_automation.js"
 
 export const nativeTools = [
   timeTool,
@@ -31,6 +37,11 @@ export const nativeTools = [
   drivingTool,
 
   ...gmailTools,
+
+  changeDeviceState,
+  getDeviceId,
+  getDeviceState,
+  setCountdown
 ];
 
 

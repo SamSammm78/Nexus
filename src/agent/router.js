@@ -9,6 +9,7 @@ const VALID_ROUTES = [
   "NAVIGATION",
   "WEATHER",
   "GMAIL",
+  "HOME_AUTOMATION"
 ];
 
 export async function routeRequest(
@@ -172,7 +173,12 @@ Exemples :
 - lis le dernier mail Etsy
 - résume mes mails récents
 
-→ GMAIL
+HOME_AUTOMATION
+Utiliser lorsqu'une demande concerne l'utilisation d'un appareil comme l'allumage ou l'éctinction de ce dernier.
+
+Exemples :
+Allume la lumière de mon bureau
+Eteins la lumiere de mon bureau
 
 
 RÈGLES IMPORTANTES :
@@ -198,6 +204,7 @@ BROWSER
 NATIVE
 WEATHER
 GMAIL
+HOME_AUTOMATION
 ou
 NAVIGATION
 

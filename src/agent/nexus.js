@@ -155,6 +155,14 @@ function getToolsForRoute(route) {
         getNativeDeclaration("send_email_draft"),
       ].filter(Boolean);
 
+    case "HOME_AUTOMATION":
+      return [
+        getNativeDeclaration("changeDeviceState"),
+        getNativeDeclaration("getDeviceId"),
+        getNativeDeclaration("getDeviceState"),
+        getNativeDeclaration("setCountdown")
+      ].filter(Boolean);
+
     case "DIRECT":
     default:
       return [];

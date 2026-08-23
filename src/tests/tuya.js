@@ -4,7 +4,7 @@ import "dotenv/config";
 
 const ACCESS_ID = process.env.TUYA_ACCESS_ID;
 const ACCESS_SECRET = process.env.TUYA_ACCESS_SECRET;
-const DEVICE_ID = process.env.TUYA_DEVICE_ID;
+const DEVICE_ID = "03626837a4cf12c02de2";
 
 // Initialisation du contexte avec le serveur Europe obligatoire
 const tuya = new TuyaContext({
@@ -81,9 +81,41 @@ async function obtenirEtatPrise() {
 
 const power_state = await obtenirEtatPrise();
 
-console.log(power_state)
-controlerPrise(power_state)
+//console.log(power_state)
+//controlerPrise(power_state)
 
 
 // Lancement de la fonction
 //controlerPrise();
+
+
+async function getDevice() {
+  try {
+   
+
+    // 2. Envoi de la requête HTTP POST à l'API Tuya
+    const response = await tuya.request({
+      method: 'POST',
+      path: `/v1.0/iot-03/devices/${DEVICE_ID}/commands`,
+      body: {
+        commands: [
+          {
+            code: 'countdown_1', // Note : Modifiez en 'switch' si votre modèle ne réagit pas
+            value: 5,
+          },
+        ],
+      },
+    });
+
+    // 3. Vérification du résultat
+    if (response.success) {
+      console.log(response)
+    } else {
+      console.error('L\'API a renvoyé une erreur :', response.msg);
+    }
+  } catch (error) {
+    console.error('Erreur technique lors de l\'appel API :', error);
+  }
+}
+
+getDevice()
