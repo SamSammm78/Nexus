@@ -21,12 +21,22 @@ import {
 } from "./google/gmail.js";
 
 import {
+  calendarTools,
+} from "./google/calendar.js";
+
+import {
   changeDeviceState,
   getDeviceId,
   getDeviceState,
   setCountdown
 } from "./home_automation.js"
-import { wake_on_lan_nas, listSharedFoldersNas, listNasFoldersNas } from "./nas.js";
+
+import { wake_on_lan_nas, 
+  listSharedFoldersNas, 
+  listNasFoldersNas,
+  getPingNas,
+  setNasStatus
+} from "./nas.js";
 
 export const nativeTools = [
   timeTool,
@@ -38,6 +48,7 @@ export const nativeTools = [
   drivingTool,
 
   ...gmailTools,
+  ...calendarTools,
 
   changeDeviceState,
   getDeviceId,
@@ -46,7 +57,9 @@ export const nativeTools = [
 
   wake_on_lan_nas,
   listSharedFoldersNas,
-  listNasFoldersNas
+  listNasFoldersNas,
+  getPingNas,
+  setNasStatus
 ];
 
 

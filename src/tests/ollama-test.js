@@ -1,153 +1,172 @@
-const OLLAMA_URL = "http://nexus.local:12345";
-const MODEL = "qwen2.5:1.5b";
+import readline from "node:readline";
 
-async function streamOllama(prompt) {
-  const response = await fetch(`${OLLAMA_URL}/api/generate`, {
-    method: "POST",
+const OLLAMA_URL = "http://192.168.1.48";
+const MODEL = "qwen2.5-coder-3b-instruct";
 
-    headers: {
-      "Content-Type": "application/json",
-    },
+const history = [];
 
-    body: JSON.stringify({
-      model: MODEL,
-      prompt,
-      stream: true,
-
-      // Garde le modèle chargé en mémoire
-      // pour accélérer les requêtes suivantes
-      keep_alive: "10m",
-
-      options: {
-        temperature: 0.5,
-      },
-    }),
+async function askOllama(message) {
+  history.push({
+    role: "user",
+    content: message,
   });
 
-  if (!response.ok) {
-    const error = await response.text();
+  const response = await fetch(
+    `${OLLAMA_URL}/api/chat`,
+    {
+      method: "POST",
 
+      headers: {
+        "Content-Type": "application/json",
+      },
+
+      body: JSON.stringify({
+        model: MODEL,
+
+        stream: true,
+
+        keep_alive: "10m",
+
+        messages: [
+          {
+            role: "system",
+            content: `
+Tu es NEXUS, un assistant IA personnel.
+
+Réponds directement à la question.
+Sois très concis et utile. Ne repond seulement en quelques mots voire phrases.
+Réponds en français si l'utilisateur parle français.
+N'invente pas de conversation précédente.
+            `.trim(),
+          },
+
+          ...history,
+        ],
+
+        options: {
+          temperature: 0.4,
+        },
+      }),
+    }
+  );
+
+  if (!response.ok) {
     throw new Error(
-      `Ollama error ${response.status}: ${error}`
+      `Ollama error ${response.status}: ${await response.text()}`
     );
   }
 
-  if (!response.body) {
-    throw new Error("Aucun flux reçu depuis Ollama.");
-  }
+  const reader =
+    response.body.getReader();
 
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
+  const decoder =
+    new TextDecoder();
 
   let buffer = "";
-  let fullResponse = "";
+  let answer = "";
 
-  const startTime = Date.now();
-  let firstTokenTime = null;
+  process.stdout.write("\nNEXUS > ");
 
   while (true) {
-    const { value, done } = await reader.read();
+    const {
+      value,
+      done,
+    } = await reader.read();
 
-    if (done) {
-      break;
-    }
+    if (done) break;
 
-    buffer += decoder.decode(value, {
-      stream: true,
-    });
+    buffer += decoder.decode(
+      value,
+      {
+        stream: true,
+      }
+    );
 
-    const lines = buffer.split("\n");
+    const lines =
+      buffer.split("\n");
 
-    // La dernière ligne peut être incomplète
-    buffer = lines.pop() || "";
+    buffer =
+      lines.pop() ?? "";
 
     for (const line of lines) {
-      if (!line.trim()) {
-        continue;
-      }
+      if (!line.trim()) continue;
 
-      let data;
+      const data =
+        JSON.parse(line);
 
-      try {
-        data = JSON.parse(line);
-      } catch (error) {
-        console.error(
-          "\nJSON invalide reçu :",
-          line
+      const token =
+        data.message?.content;
+
+      if (token) {
+        process.stdout.write(
+          token
         );
 
-        continue;
-      }
-
-      if (data.response) {
-        if (!firstTokenTime) {
-          firstTokenTime = Date.now();
-
-          console.log(
-            `\nPremier token : ${
-              firstTokenTime - startTime
-            } ms\n`
-          );
-        }
-
-        // Affichage instantané
-        process.stdout.write(data.response);
-
-        fullResponse += data.response;
-      }
-
-      if (data.done) {
-        const totalTime =
-          Date.now() - startTime;
-
-        console.log("\n");
-
-        console.log(
-          `Temps total : ${totalTime} ms`
-        );
-
-        if (data.eval_count && data.eval_duration) {
-          const tokensPerSecond =
-            data.eval_count /
-            (data.eval_duration / 1_000_000_000);
-
-          console.log(
-            `Vitesse : ${tokensPerSecond.toFixed(
-              2
-            )} tokens/s`
-          );
-        }
-
-        return {
-          text: fullResponse,
-          stats: data,
-        };
+        answer += token;
       }
     }
   }
 
-  return {
-    text: fullResponse,
-    stats: null,
-  };
+  process.stdout.write("\n");
+
+  history.push({
+    role: "assistant",
+    content: answer,
+  });
 }
 
-async function main() {
-  const prompt =
-    process.argv.slice(2).join(" ") ||
-    "Présente-toi en quelques phrases.";
+const rl =
+  readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
 
-  console.log(`Modèle : ${MODEL}`);
-  console.log(`Serveur : ${OLLAMA_URL}`);
-  console.log(`Prompt : ${prompt}`);
+function ask() {
+  rl.question(
+    "\nToi > ",
+    async message => {
+      const text =
+        message.trim();
 
-  console.log("\nNEXUS :");
+      if (
+        text === "exit" ||
+        text === "quit"
+      ) {
+        rl.close();
+        return;
+      }
 
-  try {
-    await streamOllama(prompt);
-  } catch (error) {
-    console.error("\nErreur :", error.message);
-  }
+      if (!text) {
+        ask();
+        return;
+      }
+
+      try {
+        await askOllama(
+          text
+        );
+      } catch (error) {
+        console.error(
+          "\nErreur :",
+          error.message
+        );
+      }
+
+      ask();
+    }
+  );
 }
 
-main();
+console.log(
+  `Ollama connecté : ${OLLAMA_URL}`
+);
+
+console.log(
+  `Modèle : ${MODEL}`
+);
+
+console.log(
+  "Tape exit pour quitter."
+);
+
+ask();

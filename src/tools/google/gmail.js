@@ -10,6 +10,17 @@ import {
   archiveEmail,
   trashEmail,
   sendDraft,
+  listLabels,
+  addLabelToEmail,
+  removeLabelFromEmail,
+  forwardEmail,
+  batchMarkRead,
+  batchArchive,
+  batchTrash,
+  getEmailAttachments,
+  downloadAttachment,
+  listThreads,
+  readThread,
 } from "../../services/google/gmail.js";
 
 export const gmailTools = [
@@ -24,11 +35,15 @@ export const gmailTools = [
             type: "number",
             description: "Nombre maximum d'emails à retourner.",
           },
+          pageToken: {
+            type: "string",
+            description: "Token de pagination retourné par une requête précédente pour obtenir la page suivante.",
+          },
         },
       },
     },
-    execute: async ({ maxResults = 10 }) => {
-      return getRecentEmails({ maxResults });
+    execute: async ({ maxResults = 10, pageToken }) => {
+      return getRecentEmails({ maxResults, pageToken });
     },
   },
 
@@ -46,14 +61,19 @@ export const gmailTools = [
           maxResults: {
             type: "number",
           },
+          pageToken: {
+            type: "string",
+            description: "Token de pagination pour la page suivante.",
+          },
         },
         required: ["query"],
       },
     },
-    execute: async ({ query, maxResults = 10 }) => {
+    execute: async ({ query, maxResults = 10, pageToken }) => {
       return searchEmails({
         query,
         maxResults,
+        pageToken,
       });
     },
   },
@@ -248,19 +268,302 @@ export const gmailTools = [
     declaration: {
       name: "send_email_draft",
       description:
-        "Envoie un brouillon Gmail existant. À utiliser uniquement après confirmation explicite de l'utilisateur.",
+        "Envoie un brouillon Gmail existant. Nécessite une confirmation explicite de l'utilisateur avant l'appel.",
       parameters: {
         type: "object",
         properties: {
           draftId: {
             type: "string",
+            description: "ID du brouillon à envoyer.",
+          },
+          confirmed: {
+            type: "boolean",
+            description:
+              "Doit être obligatoirement true. À ne passer que si l'utilisateur a explicitement confirmé l'envoi à haute voix ou par écrit.",
           },
         },
-        required: ["draftId"],
+        required: ["draftId", "confirmed"],
       },
     },
-    execute: async ({ draftId }) => {
+    execute: async ({ draftId, confirmed }) => {
+      if (confirmed !== true) {
+        throw new Error(
+          "Envoi refusé : confirmation explicite requise. Demande d'abord à l'utilisateur de confirmer."
+        );
+      }
+
       return sendDraft(draftId);
+    },
+  },
+
+  // ======================================================
+  // LABELS
+  // ======================================================
+
+  {
+    declaration: {
+      name: "list_labels",
+      description: "Liste tous les labels Gmail de l'utilisateur.",
+      parameters: {
+        type: "object",
+        properties: {},
+      },
+    },
+    execute: async () => {
+      return listLabels();
+    },
+  },
+
+  {
+    declaration: {
+      name: "add_label_to_email",
+      description: "Ajoute un label à un email Gmail.",
+      parameters: {
+        type: "object",
+        properties: {
+          messageId: {
+            type: "string",
+            description: "ID de l'email.",
+          },
+          labelId: {
+            type: "string",
+            description: "ID du label à ajouter.",
+          },
+        },
+        required: ["messageId", "labelId"],
+      },
+    },
+    execute: async ({ messageId, labelId }) => {
+      return addLabelToEmail(messageId, labelId);
+    },
+  },
+
+  {
+    declaration: {
+      name: "remove_label_from_email",
+      description: "Retire un label d'un email Gmail.",
+      parameters: {
+        type: "object",
+        properties: {
+          messageId: {
+            type: "string",
+            description: "ID de l'email.",
+          },
+          labelId: {
+            type: "string",
+            description: "ID du label à retirer.",
+          },
+        },
+        required: ["messageId", "labelId"],
+      },
+    },
+    execute: async ({ messageId, labelId }) => {
+      return removeLabelFromEmail(messageId, labelId);
+    },
+  },
+
+  // ======================================================
+  // FORWARD
+  // ======================================================
+
+  {
+    declaration: {
+      name: "forward_email",
+      description: "Transmet un email à un autre destinataire. Nécessite une confirmation explicite de l'utilisateur avant l'appel.",
+      parameters: {
+        type: "object",
+        properties: {
+          messageId: {
+            type: "string",
+            description: "ID de l'email à transmettre.",
+          },
+          to: {
+            type: "string",
+            description: "Adresse email du destinataire.",
+          },
+          confirmed: {
+            type: "boolean",
+            description:
+              "Doit être obligatoirement true. À ne passer que si l'utilisateur a explicitement confirmé l'envoi.",
+          },
+        },
+        required: ["messageId", "to", "confirmed"],
+      },
+    },
+    execute: async ({ messageId, to, confirmed }) => {
+      if (confirmed !== true) {
+        throw new Error(
+          "Transfert refusé : confirmation explicite requise. Demande d'abord à l'utilisateur de confirmer."
+        );
+      }
+
+      return forwardEmail({ messageId, to });
+    },
+  },
+
+  // ======================================================
+  // BATCH OPERATIONS
+  // ======================================================
+
+  {
+    declaration: {
+      name: "batch_mark_read",
+      description: "Marque plusieurs emails comme lus en une seule opération.",
+      parameters: {
+        type: "object",
+        properties: {
+          messageIds: {
+            type: "array",
+            items: { type: "string" },
+            description: "Liste des IDs des emails à marquer comme lus.",
+          },
+        },
+        required: ["messageIds"],
+      },
+    },
+    execute: async ({ messageIds }) => {
+      return batchMarkRead(messageIds);
+    },
+  },
+
+  {
+    declaration: {
+      name: "batch_archive",
+      description: "Archive plusieurs emails en une seule opération.",
+      parameters: {
+        type: "object",
+        properties: {
+          messageIds: {
+            type: "array",
+            items: { type: "string" },
+            description: "Liste des IDs des emails à archiver.",
+          },
+        },
+        required: ["messageIds"],
+      },
+    },
+    execute: async ({ messageIds }) => {
+      return batchArchive(messageIds);
+    },
+  },
+
+  {
+    declaration: {
+      name: "batch_trash",
+      description: "Déplace plusieurs emails dans la corbeille en une seule opération.",
+      parameters: {
+        type: "object",
+        properties: {
+          messageIds: {
+            type: "array",
+            items: { type: "string" },
+            description: "Liste des IDs des emails à supprimer.",
+          },
+        },
+        required: ["messageIds"],
+      },
+    },
+    execute: async ({ messageIds }) => {
+      return batchTrash(messageIds);
+    },
+  },
+
+  // ======================================================
+  // PIÈCES JOINTES
+  // ======================================================
+
+  {
+    declaration: {
+      name: "list_attachments",
+      description: "Liste les pièces jointes d'un email Gmail.",
+      parameters: {
+        type: "object",
+        properties: {
+          messageId: {
+            type: "string",
+            description: "ID de l'email.",
+          },
+        },
+        required: ["messageId"],
+      },
+    },
+    execute: async ({ messageId }) => {
+      return getEmailAttachments(messageId);
+    },
+  },
+
+  {
+    declaration: {
+      name: "download_attachment",
+      description: "Télécharge une pièce jointe d'un email Gmail.",
+      parameters: {
+        type: "object",
+        properties: {
+          messageId: {
+            type: "string",
+            description: "ID de l'email.",
+          },
+          attachmentId: {
+            type: "string",
+            description: "ID de la pièce jointe.",
+          },
+        },
+        required: ["messageId", "attachmentId"],
+      },
+    },
+    execute: async ({ messageId, attachmentId }) => {
+      return downloadAttachment({ messageId, attachmentId });
+    },
+  },
+
+  // ======================================================
+  // THREADS
+  // ======================================================
+
+  {
+    declaration: {
+      name: "list_threads",
+      description: "Liste les conversations Gmail (threads) avec pagination.",
+      parameters: {
+        type: "object",
+        properties: {
+          maxResults: {
+            type: "number",
+            description: "Nombre maximum de threads à retourner.",
+          },
+          query: {
+            type: "string",
+            description: "Requête Gmail pour filtrer les threads.",
+          },
+          pageToken: {
+            type: "string",
+            description: "Token de pagination pour la page suivante.",
+          },
+        },
+      },
+    },
+    execute: async ({ maxResults = 10, query, pageToken }) => {
+      return listThreads({ maxResults, query, pageToken });
+    },
+  },
+
+  {
+    declaration: {
+      name: "read_thread",
+      description: "Lit tous les messages d'une conversation Gmail (thread).",
+      parameters: {
+        type: "object",
+        properties: {
+          threadId: {
+            type: "string",
+            description: "ID du thread à lire.",
+          },
+        },
+        required: ["threadId"],
+      },
+    },
+    execute: async ({ threadId }) => {
+      return readThread(threadId);
     },
   },
 ];

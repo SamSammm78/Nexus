@@ -10,7 +10,8 @@ const VALID_ROUTES = [
   "WEATHER",
   "GMAIL",
   "HOME_AUTOMATION",
-  "NAS"
+  "NAS",
+  "CALENDAR"
 ];
 
 export async function routeRequest(
@@ -173,19 +174,61 @@ Exemples :
 - retrouve le mail de mon professeur
 - lis le dernier mail Etsy
 - résume mes mails récents
+- transfère ce mail à untel
+- ajoute le label important à ce mail
+- supprime tous les mails demachin
+- montre les pièces jointes de ce mail
+- lis cette conversation complète
+- envoie un mail à X pour dire...
+- réponds à ce mail
+
+Ne PAS router vers GMAIL :
+- "écris-moi un message" → DIRECT
+  (pas d'envoi, simple génération de texte)
+
+CALENDAR
+
+Utiliser lorsqu'une demande concerne
+l'agenda, les rendez-vous ou les événements.
+
+Exemples :
+
+- mes rendez-vous demain
+- qu'est-ce que j'ai aujourd'hui
+- ajoute un rendez-vous
+- supprime mon rendez-vous
+- décale mon cours à 16h
+- quels événements entre le 3 et le 8 ?
+- cherche un événement contenant "dentiste"
+
 
 HOME_AUTOMATION
-Utiliser lorsqu'une demande concerne l'utilisation d'un appareil comme l'allumage ou l'éctinction de ce dernier.
+Utiliser lorsqu'une demande concerne
+la domotique : allumage, extinction,
+changement d'état, minuteur ou statut
+d'un appareil connecté (prises, lumières...).
 
 Exemples :
-Allume la lumière de mon bureau
-Eteins la lumiere de mon bureau
+
+- Allume la lumière de mon bureau
+- Eteins la lumiere de mon bureau
+- met une minuterie de 30 minutes sur la prise
+- l'état de la prise du lampadaire ?
+- éteins la prise dans 2 heures
 
 NAS
-Utiliser lorsqu'une demande concerne le serveur nas
+Utiliser lorsqu'une demande concerne
+le serveur NAS (Synology) : allumage
+via Wake On LAN, ping, état, fichiers,
+dossiers partagés.
 
 Exemples :
-Lancer le serveur nas via Wake On LAN
+
+- Lancer le serveur nas via Wake On LAN
+- le NAS est-il en ligne ?
+- liste les dossiers partagés du NAS
+- affiche l'arborescence du NAS
+- mets le NAS hors service
 
 
 RÈGLES IMPORTANTES :
@@ -204,6 +247,21 @@ RÈGLES IMPORTANTES :
   nécessitant une vraie interaction
   avec une page Web.
 
+- "Écris-moi un message / un texte" →
+  DIRECT. L'utilisateur n'a rien demandé
+  d'externe ni d'action.
+
+- "Envoie un email à quelqu'un" →
+  GMAIL (nécessite un outil).
+
+- Si la demande est entre deux catégories
+  et qu'un paramètre manque (lieu, destinataire,
+  appareil), reste sur la catégorie la plus
+  probable et l'assistant posera la question.
+
+- Si aucune catégorie ne correspond vraiment,
+  réponds DIRECT.
+
 - Réponds uniquement avec :
 DIRECT
 WEB_SEARCH
@@ -211,6 +269,7 @@ BROWSER
 NATIVE
 WEATHER
 GMAIL
+CALENDAR
 HOME_AUTOMATION
 NAS
 ou

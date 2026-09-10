@@ -54,11 +54,13 @@ NEXUS should progressively be able to:
 ```text
 Nexus/
 ├── src/
-│   ├── index.js
+│   ├── index.js                     # headless bootstrap (Core only)
 │   ├── agent/
-│   │   ├── nexus.js
-│   │   ├── router.js
-│   │   └── systemPrompt.js
+│   │   ├── nexus.js                 # Core: context, routing, model, tools
+│   │   ├── router.js                # Gemini router (routes below)
+│   │   └── systemPrompt.js          # global system prompt
+│   ├── cli/
+│   │   └── index.js                 # terminal interface (blessed)
 │   ├── config/
 │   │   └── gemini.js
 │   ├── models/
@@ -66,26 +68,39 @@ Nexus/
 │   │   ├── gemini.js
 │   │   ├── local.js
 │   │   └── localBrowserAgent.js
-│   ├── google/
-│   │   ├── auth.js
-│   │   └── gmail.js
 │   ├── mcp/
 │   │   ├── client.js
 │   │   └── servers.js
+│   ├── memory/
+│   │   └── shortTerm.js
+│   ├── services/
+│   │   ├── google/
+│   │   │   ├── auth.js
+│   │   │   ├── gmail.js
+│   │   │   └── calendar.js
+│   │   ├── nas/
+│   │   │   ├── client.js
+│   │   │   ├── files.js
+│   │   │   └── system.js
+│   │   ├── mapRoute.js
+│   │   └── map/
+│   │       └── server.js
 │   ├── tools/
 │   │   ├── index.js
 │   │   ├── time.js
 │   │   ├── webSearch.js
 │   │   ├── weather.js
+│   │   ├── nas.js
+│   │   ├── home_automation.js
 │   │   ├── google/
-│   │   │   └── gmail.js
+│   │   │   ├── gmail.js
+│   │   │   └── calendar.js
 │   │   └── navigation/
-│   ├── services/
-│   │   └── mapRoute.js
-│   ├── map/
-│   │   └── server.js
-│   └── memory/
-│       └── shortTerm.js
+│   │       ├── index.js
+│   │       ├── transit.js
+│   │       ├── disruptions.js
+│   │       └── driving.js
+│   └── voice/
 ├── credentials/
 │   ├── google-oauth.json
 │   └── google-token.json
@@ -130,7 +145,8 @@ BROWSER
 NATIVE
 NAVIGATION
 GMAIL
-PROJECT
+CALENDAR
+NAS
 ```
 
 Examples:
@@ -148,8 +164,11 @@ Examples:
 "Quels mails ai-je reçus aujourd'hui ?"
 → GMAIL
 
-"Où en suis-je sur Nexus ?"
-→ PROJECT
+"Quels sont mes événements de demain ?"
+→ CALENDAR
+
+"Allume le NAS."
+→ NAS
 ```
 
 The router should remain lightweight and should not receive unnecessary tool payloads.
@@ -279,10 +298,24 @@ export const nativeTools = [
   timeTool,
   webSearchTool,
   weatherTool,
+
   transitTool,
   disruptionsTool,
   drivingTool,
+
   ...gmailTools,
+  ...calendarTools,
+
+  changeDeviceState,
+  getDeviceId,
+  getDeviceState,
+  setCountdown,
+
+  wake_on_lan_nas,
+  listSharedFoldersNas,
+  listNasFoldersNas,
+  getPingNas,
+  setNasStatus,
 ];
 ```
 
@@ -320,8 +353,8 @@ Simple factual lookup should use search tools instead.
 Files:
 
 ```text
-src/google/auth.js
-src/google/gmail.js
+src/services/google/auth.js
+src/services/google/gmail.js
 src/tools/google/gmail.js
 ```
 
@@ -380,17 +413,50 @@ send_email_draft
 
 ---
 
+## Google Calendar
+
+Calendar V1 is integrated on the same OAuth foundation as Gmail:
+
+```text
+src/services/google/calendar.js
+src/tools/google/calendar.js
+```
+
+Tools: list / read events, create events, update and delete events.
+
 ## Google roadmap
 
-After Gmail:
+After Gmail and Calendar:
 
 ```text
 Google Drive
 Google Tasks
-Google Calendar
 ```
 
 The same OAuth foundation should be reused.
+
+---
+
+## NAS & home automation
+
+NEXUS can control a Synology NAS and home devices:
+
+```text
+NAS     → Wake on LAN, authentication, shared folder listing, status
+Tuya    → device state, countdown timers, device discovery
+```
+
+Files:
+
+```text
+src/services/nas/client.js
+src/services/nas/files.js
+src/services/nas/system.js
+src/tools/nas.js
+src/tools/home_automation.js
+```
+
+NAS access stays local and requires explicit credentials in `.env`.
 
 ---
 
@@ -560,7 +626,7 @@ Example:
   "name": "NEXUS",
   "status": "active",
   "goal": "Build a personal AI assistant",
-  "currentFocus": "Finish Gmail integration"
+  "currentFocus": "Ship Project Copilot Core"
 }
 ```
 
@@ -705,13 +771,31 @@ quick actions
 
 ```text
 ┌─────────────────────┬───────────────────────────────┐
-│                     │                               │
 │        ORB          │          CONVERSATION         │
 │                     │                               │
 │   ● CORE ONLINE     │                               │
 ├─────────────────────┴───────────────────────────────┤
-│ >                                                   │
+│                     /help     Afficher l'aide        │
+│                     /attach   Ajouter des fichiers   │
+│  >                                                 │
 └─────────────────────────────────────────────────────┘
+```
+
+Features: `/` command suggestions with ↑/↓ + Tab, custom input with cursor ←/→, file attachment (`/attach`), blinks like a native terminal block cursor.
+
+Commands:
+
+```text
+/help     Afficher l'aide des commandes
+/status   État de NEXUS
+/attach   Ajouter des fichiers (chemins)
+/files    Fichiers en attente
+/detach   Retirer un fichier (index, nom ou all)
+/project  Changer de projet (nom)
+/model    Changer de modèle (nom)
+/tools    Outils disponibles
+/clear    Effacer la conversation
+/exit     Quitter NEXUS
 ```
 
 ### Full Workspace
@@ -747,6 +831,20 @@ LM_STUDIO_URL=http://192.168.x.x:1234
 
 OLLAMA_URL=http://nexus.local:12345
 OLLAMA_MODEL=qwen2.5:1.5b
+
+TAVILY_API_KEY=your_key_here          # web search
+
+NAS_IP=192.168.x.x
+NAS_IP_SIMPLE=192.168.x.x
+NAS_MAC=AA:BB:CC:DD:EE:FF             # Wake on LAN
+NAS_USERNAME=your_user
+NAS_PASSWORD=your_password
+
+TUYA_ACCESS_ID=your_id                 # home automation
+TUYA_ACCESS_SECRET=your_secret
+
+IDFM_API_KEY=your_key_here             # Île-de-France Mobilités
+ORS_API_KEY=your_key_here              # OpenRouteService
 ```
 
 Never commit `.env`.
@@ -771,12 +869,23 @@ Install dependencies:
 
 ```bash
 npm install
-npm install @google/genai
-npm install googleapis
-npm install @google-cloud/local-auth
 ```
 
-Playwright MCP:
+Create `.env` from the variables above, and add your Google OAuth credentials:
+
+```bash
+mkdir -p credentials
+# place google-oauth.json (OAuth client) in credentials/
+```
+
+Google auth files are created on first run:
+
+```text
+credentials/google-oauth.json
+credentials/google-token.json
+```
+
+Playwright MCP (optional, for browser interaction):
 
 ```bash
 npx -y @playwright/mcp@latest
@@ -786,16 +895,22 @@ npx -y @playwright/mcp@latest
 
 ## Running NEXUS
 
-Depending on the current entry point:
+The CLI is the main interactive interface:
+
+```bash
+node src/cli/index.js
+```
+
+Headless core (no interface, starts the router/tools):
 
 ```bash
 node src/index.js
 ```
 
-or:
+Map server (optional, for navigation rendering):
 
-```bash
-npm start
+```text
+http://localhost:8765/map.html
 ```
 
 ---
@@ -909,7 +1024,11 @@ Avoid infinite retry loops.
 ## Roadmap
 
 ```text
-1. Finish Gmail
+1. ✅ Gmail V1 (read, draft, send with confirmation)
+   ✅ Google Calendar V1
+   ✅ NAS (Wake on LAN, auth, folder listing)
+   ✅ Tuya home automation
+   ✅ CLI: command suggestions, file attach, custom input
 
 2. Project Copilot Core
    - project registry
@@ -944,11 +1063,11 @@ Avoid infinite retry loops.
 
 8. Deep VS Code integration
 
-9. Compact CLI
+9. Compact CLI ✅ (see CLI section)
 
 10. Location and personal places
 
-11. Google Calendar
+11. Google Calendar ✅ (see Calendar section)
 
 12. Intelligent error handling
 
@@ -970,8 +1089,6 @@ Avoid infinite retry loops.
 Near-term order:
 
 ```text
-Gmail
-  ↓
 Project Copilot Core
   ↓
 Memory Brain V1
@@ -1100,11 +1217,15 @@ weather
 navigation
 MapLibre HUD
 Google OAuth
-Gmail read integration
+Gmail V1 (read, draft, send with confirmation)
+Google Calendar V1
+NAS (Wake on LAN, auth, folder listing)
+Tuya home automation
 local AI abstraction
 LM Studio
 Ollama experimentation
 short-term memory
+CLI: command suggestions, file attachment, custom input
 voice orb prototypes
 HUD prototypes
 ```
@@ -1112,21 +1233,16 @@ HUD prototypes
 Current objective:
 
 ```text
-Finish Gmail V1
+Project Copilot Core
 ```
 
 Next:
 
 ```text
-Project Copilot Core
+Google Drive
+Google Tasks
 ```
 
 ---
 
-# NEXUS
-
-```text
-ONE CORE.
-ONE MEMORY.
-MULTIPLE INTERFACES.
-```
+> **ONE CORE. ONE MEMORY. MULTIPLE INTERFACES.**

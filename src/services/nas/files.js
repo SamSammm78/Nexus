@@ -9,7 +9,6 @@ export async function listSharedFolders() {
     method: "list_share",
   });
 }
-//console.log(await listSharedFolders())
 
 export async function listNasFolder(folderPath) {
   return nasRequest({
@@ -31,4 +30,4 @@ export async function listNasFolder(folderPath) {
   });
 }
 
-//console.log(await listNasFolder("/media"))
+

@@ -8,7 +8,7 @@ const response = await fetch(
     },
 
     body: JSON.stringify({
-      model: "google/gemma-4-e2b",
+      model: "qwen2.5-coder-3b-instruct",
 
 
 
@@ -16,7 +16,7 @@ const response = await fetch(
         {
           role: "user",
           content:
-            "qui es tu ?",
+            "Qui es tu ?",
         },
       ],
 

@@ -2,6 +2,7 @@ import wol from "wakeonlan"
 import "dotenv/config";
 
 import { listSharedFolders, listNasFolder } from "../services/nas/files.js"
+import { pingNas, setStatus } from "../services/nas/system.js";
 
 const targetMac = process.env.NAS_MAC;
 
@@ -77,6 +78,54 @@ export const listNasFoldersNas = {
     try {
     
     return await listNasFolder(folder)
+  } catch (error) {
+    return error
+  }
+  },
+}
+
+
+
+export const getPingNas = {
+    declaration: {
+    name: "getPingNas",
+    description: "Vérifier si le serveur nas fonctionne",
+  },
+
+  async execute() {
+    try {
+    return await pingNas()
+  } catch (error) {
+    return error
+  }
+  },
+}
+
+export const setNasStatus = {
+    declaration: {
+    name: "setNasStatus",
+    description: "éteindre ou redémarrer le serveur NAS",
+
+    parameters: {
+        type: "object",
+        properties: {
+            mode: {
+                type: "string",
+                description: "shutdown ou reboot"
+            }
+        },
+
+        required: [
+            "mode"
+        ]
+    },
+  },
+
+  async execute(args) {
+    const mode = String(args.mode)
+    try {
+    
+    return await setStatus(mode)
   } catch (error) {
     return error
   }

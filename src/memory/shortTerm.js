@@ -4,19 +4,35 @@ let history = [];
 
 
 export function addUserMessage(
-  text
+  text,
+  files = []
 ) {
+
+  const parts = [];
+
+  if (text) {
+    parts.push({
+      text
+    });
+  }
+
+  for (const file of files) {
+    parts.push({
+      inlineData: {
+        mimeType: file.mimeType,
+        data: file.data,
+      },
+    });
+  }
+
+  if (!parts.length) {
+    parts.push({ text: "" });
+  }
 
   history.push({
     role: "user",
-
-    parts: [
-      {
-        text
-      }
-    ]
+    parts,
   });
-
 
   trimHistory();
 }

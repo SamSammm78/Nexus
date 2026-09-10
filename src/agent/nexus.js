@@ -153,6 +153,27 @@ function getToolsForRoute(route) {
         getNativeDeclaration("archive_email"),
         getNativeDeclaration("trash_email"),
         getNativeDeclaration("send_email_draft"),
+        getNativeDeclaration("list_labels"),
+        getNativeDeclaration("add_label_to_email"),
+        getNativeDeclaration("remove_label_from_email"),
+        getNativeDeclaration("forward_email"),
+        getNativeDeclaration("batch_mark_read"),
+        getNativeDeclaration("batch_archive"),
+        getNativeDeclaration("batch_trash"),
+        getNativeDeclaration("list_attachments"),
+        getNativeDeclaration("download_attachment"),
+        getNativeDeclaration("list_threads"),
+        getNativeDeclaration("read_thread"),
+      ].filter(Boolean);
+
+    case "CALENDAR":
+      return [
+        getNativeDeclaration("get_upcoming_events"),
+        getNativeDeclaration("search_calendar_events"),
+        getNativeDeclaration("get_calendar_events_between"),
+        getNativeDeclaration("create_calendar_event"),
+        getNativeDeclaration("update_calendar_event"),
+        getNativeDeclaration("delete_calendar_event"),
       ].filter(Boolean);
 
     case "HOME_AUTOMATION":
@@ -168,7 +189,9 @@ function getToolsForRoute(route) {
       return [
         getNativeDeclaration("wake_on_lan_nas"),
         getNativeDeclaration("listSharedFoldersNas"),
-        getNativeDeclaration("listNasFoldersNas")
+        getNativeDeclaration("listNasFoldersNas"),
+        getNativeDeclaration("getPingNas"),
+        getNativeDeclaration("setNasStatus")
       ].filter(Boolean)
 
     case "DIRECT":
@@ -219,13 +242,37 @@ async function executeTool(call) {
 // NEXUS CORE
 // ============================================================
 
+function buildMessageParts(message, files = []) {
+  const parts = [];
+
+  if (message?.trim()) {
+    parts.push({
+      text: message,
+    });
+  }
+
+  for (const file of files) {
+    parts.push({
+      inlineData: {
+        mimeType: file.mimeType,
+        data: file.data,
+      },
+    });
+  }
+
+  return parts;
+}
+
 export async function askNexus(
   message,
-  { onEvent = () => {} } = {}
+  { onEvent = () => {}, files = [] } = {}
 ) {
-  if (!message?.trim()) return "";
+  if (!message?.trim() && files.length === 0) return "";
 
   await startNexus();
+
+  const messageParts =
+    buildMessageParts(message, files);
 
   try {
     const memory = getHistory();
@@ -238,10 +285,13 @@ export async function askNexus(
       type: "thinking",
     });
 
-    const route = await routeRequest(
-      message,
-      memory
-    );
+    // Message vide avec fichiers → analyse directe, pas d'outils.
+    const hasFilesOnly =
+      !message?.trim() && files.length > 0;
+
+    const route = hasFilesOnly
+      ? "DIRECT"
+      : await routeRequest(message, memory);
 
     onEvent({
       type: "route",
@@ -272,7 +322,7 @@ export async function askNexus(
     );
 
     let response = await chat.sendMessage({
-      message,
+      message: messageParts,
     });
 
     // --------------------------------------------------------
@@ -362,6 +412,7 @@ export async function askNexus(
 
       saveConversation(
         message,
+        files,
         answer
       );
 
@@ -383,6 +434,7 @@ export async function askNexus(
 
     saveConversation(
       message,
+      files,
       answer
     );
 
@@ -410,8 +462,9 @@ export async function askNexus(
 
 function saveConversation(
   userMessage,
+  files,
   assistantMessage
 ) {
-  addUserMessage(userMessage);
+  addUserMessage(userMessage, files);
   addAssistantMessage(assistantMessage);
 }

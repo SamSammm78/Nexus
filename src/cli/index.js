@@ -1,8 +1,85 @@
+import path from "node:path";
+import fs from "node:fs/promises";
+
 import blessed from "blessed";
 import {
   startNexus,
   askNexus,
 } from "../agent/nexus.js";
+
+// ============================================================
+// FILES
+// ============================================================
+
+const MIME_BY_EXT = {
+  ".txt": "text/plain",
+  ".md": "text/markdown",
+  ".json": "application/json",
+  ".js": "text/javascript",
+  ".ts": "text/typescript",
+  ".mjs": "text/javascript",
+  ".cjs": "text/javascript",
+  ".py": "text/x-python",
+  ".html": "text/html",
+  ".css": "text/css",
+  ".csv": "text/csv",
+  ".xml": "text/xml",
+  ".yaml": "text/yaml",
+  ".yml": "text/yaml",
+  ".pdf": "application/pdf",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
+  ".heic": "image/heic",
+  ".heif": "image/heif",
+  ".wav": "audio/wav",
+  ".mp3": "audio/mpeg",
+  ".svg": "text/plain",
+  ".log": "text/plain",
+};
+
+const MAX_FILE_SIZE_BYTES = 19 * 1024 * 1024;
+
+function detectMimeType(filePath) {
+  const ext = path.extname(filePath).toLowerCase();
+
+  return MIME_BY_EXT[ext] ?? "text/plain";
+}
+
+function formatBytes(bytes) {
+  if (bytes < 1024) return `${bytes} o`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} Ko`;
+
+  return `${(bytes / (1024 * 1024)).toFixed(1)} Mo`;
+}
+
+async function readFileAsAttachment(filePath) {
+  const stat = await fs.stat(filePath);
+
+  if (!stat.isFile()) {
+    throw new Error(`${filePath} n'est pas un fichier.`);
+  }
+
+  if (stat.size > MAX_FILE_SIZE_BYTES) {
+    throw new Error(
+      `${path.basename(filePath)} dépasse la limite de ${formatBytes(MAX_FILE_SIZE_BYTES)}.`
+    );
+  }
+
+  const data = await fs.readFile(filePath);
+  const base64 = data.toString("base64");
+
+  return {
+    name: path.basename(filePath),
+    mimeType: detectMimeType(filePath),
+    data: base64,
+    size: stat.size,
+  };
+}
+
+const pendingFiles = [];
 
 // ============================================================
 // NEXUS CLI
@@ -14,7 +91,11 @@ const screen = blessed.screen({
   title: "NEXUS CLI",
 });
 
-screen.program.hideCursor();
+// Curseur "terminal" : un bloc clignotant dessiné par blessed à
+// la position d'insertion, comme le curseur d'un shell.
+screen.cursor.artificial = true;
+screen.cursorShape("block", true);
+screen.cursor._state = 1;
 
 
 // ============================================================
@@ -154,7 +235,9 @@ const conversationPanel = box({
 
   scrollable: true,
   alwaysScroll: true,
-  keys: true,
+  // Les touches ↑/↓ sont réservées à la saisie et au menu de
+  // commandes ; le défilement se fait à la molette.
+  keys: false,
   mouse: true,
 
   scrollbar: {
@@ -178,7 +261,7 @@ const conversationPanel = box({
 
 
 // ============================================================
-// INPUT
+// INPUT  (édition gérée par nous-mêmes : curseur ←/→, clic OK)
 // ============================================================
 
 const inputPanel = box({
@@ -204,43 +287,391 @@ blessed.text({
   style: terminalStyle,
 });
 
-const input = blessed.textbox({
+// Affichage du texte tapé. On gère nous-mêmes la frappe, le
+// curseur (←/→), la sélection de commande et le clic souris :
+// plus de dépendance au focus/readInput de blessé.
+const inputDisplay = box({
   parent: inputPanel,
   top: 0,
   left: 5,
   width: "100%-7",
   height: 3,
-
-  inputOnFocus: false,
-
-  // Important :
-  // on évite les raccourcis avancés de Blessed.
-  keys: false,
-
-  mouse: true,
-  tags: true,
-
-  style: {
-    fg: COLORS.white,
-    bg: COLORS.bg,
-  },
+  valign: "middle",
+  wrap: false,
+  padding: 0,
 });
 
-let inputIsReading = false;
+let lineValue = "";
+let caret = 0;
+let inputIsReading = true;
 
-function activateInput() {
-  if (inputIsReading) return;
+function getInputValue() {
+  return lineValue;
+}
 
-  inputIsReading = true;
+function setInputValue(value) {
+  lineValue = String(value ?? "");
+  caret = lineValue.length;
+  renderInput();
+}
 
-  input.focus();
+function clearInput() {
+  setInputValue("");
+}
 
-  input.readInput(() => {
-    inputIsReading = false;
-  });
+function renderInput() {
+  const rawWidth = inputDisplay.width;
+  const width =
+    typeof rawWidth === "number" && rawWidth > 4
+      ? rawWidth - 2
+      : Math.max(4, screen.width - 10);
+
+  // Fenêtre de texte : le curseur reste toujours visible.
+  let start = 0;
+  if (caret > width - 1) {
+    start = caret - (width - 1);
+  }
+
+  const before =
+    lineValue.slice(start, caret);
+  const after =
+    lineValue.slice(caret, start + width);
+
+  inputDisplay.setContent(before + after);
+
+  // Curseur "terminal" : bloc clignotant dessiné par blessed à la
+  // position d'insertion (après le dernier caractère), comme dans
+  // un shell. On force le réaffichage du bloc (il peut être mis en
+  // pause par blessed au boot) et on le place sur la ligne qui
+  // affiche le texte saisi.
+  screen.cursor._hidden = false;
+  screen.program.cursorPos(
+    inputDisplay.atop + 1,
+    inputDisplay.aleft + (caret - start) + 1
+  );
 
   screen.render();
 }
+
+function activateInput() {
+  inputIsReading = true;
+  renderInput();
+}
+
+// Toute la saisie est interceptée au niveau de l'écran (avant
+// que les éléments ne la consomment). Le clic d'une zone ne
+// met donc plus fin à la saisie.
+screen.on("keypress", (ch, key) => {
+  if (!inputIsReading) return;
+
+  const k = key.name;
+
+  // ----- Navigation de commande (menu /) -------------------
+  if (k === "up") {
+    if (suggestionState.visible) moveSuggestion(-1);
+    return;
+  }
+
+  if (k === "down") {
+    if (suggestionState.visible) moveSuggestion(1);
+    return;
+  }
+
+  if (k === "tab") {
+    if (suggestionState.visible) {
+      acceptSuggestion(false);
+    }
+    return;
+  }
+
+  if (k === "escape") {
+    if (suggestionState.visible) {
+      hideSuggestions();
+    } else {
+      shutdown();
+    }
+    return;
+  }
+
+  // ----- Soumission ----------------------------------------
+  // "return" est ré-émis en "enter" par blessé : on ignore
+  // "return" pour éviter une double soumission.
+  if (k === "enter" || k === "linefeed") {
+    handleSubmit(getInputValue());
+    return;
+  }
+
+  if (k === "return") return;
+
+  // ----- Curseur ←/→ Home/End ------------------------------
+  if (k === "left") {
+    if (caret > 0) {
+      caret--;
+      renderInput();
+    }
+    return;
+  }
+
+  if (k === "right") {
+    if (caret < lineValue.length) {
+      caret++;
+      renderInput();
+    }
+    return;
+  }
+
+  if (k === "home") {
+    caret = 0;
+    renderInput();
+    return;
+  }
+
+  if (k === "end") {
+    caret = lineValue.length;
+    renderInput();
+    return;
+  }
+
+  // ----- Édition --------------------------------------------
+  if (k === "backspace") {
+    if (caret > 0) {
+      const at = lineValue.slice(0, caret - 1);
+      const rest = lineValue.slice(caret);
+      lineValue = at + rest;
+      caret--;
+      renderInput();
+      refreshSuggestions();
+    }
+    return;
+  }
+
+  if (k === "delete") {
+    if (caret < lineValue.length) {
+      lineValue =
+        lineValue.slice(0, caret) +
+        lineValue.slice(caret + 1);
+      renderInput();
+      refreshSuggestions();
+    }
+    return;
+  }
+
+  // ----- Caractères imprimables ------------------------------
+  if (
+    ch &&
+    !/^[\x00-\x08\x0b-\x0c\x0e-\x1f\x7f]$/.test(ch)
+  ) {
+    lineValue =
+      lineValue.slice(0, caret) +
+      ch +
+      lineValue.slice(caret);
+    caret++;
+    renderInput();
+    refreshSuggestions();
+  }
+});
+
+
+// ============================================================
+// COMMAND SUGGESTIONS  (/menu au-dessus de l'entrée)
+// ============================================================
+
+const COMMANDS = [
+  { name: "/help",    desc: "Afficher l'aide des commandes" },
+  { name: "/status",  desc: "État de NEXUS" },
+  { name: "/attach",  desc: "Ajouter des fichiers (chemins)" },
+  { name: "/files",   desc: "Fichiers en attente" },
+  { name: "/detach",  desc: "Retirer un fichier (index, nom ou all)" },
+  { name: "/project", desc: "Changer de projet (nom)" },
+  { name: "/model",   desc: "Changer de modèle (nom)" },
+  { name: "/tools",   desc: "Outils disponibles" },
+  { name: "/clear",   desc: "Effacer la conversation" },
+  { name: "/exit",    desc: "Quitter NEXUS" },
+];
+
+const suggestionState = {
+  visible: false,
+  matches: [],
+  matchesKey: "",
+  selected: 0,
+  offset: 0,
+};
+
+const MAX_SUGGESTIONS = 10;
+
+const suggestionsBox = box({
+  parent: root,
+  bottom: 5,
+  left: 0,
+  width: "66%",
+  height: 1,
+  hidden: true,
+  border: { type: "line" },
+  style: {
+    border: { fg: COLORS.borderActive },
+    bg: COLORS.bg,
+    fg: COLORS.white,
+  },
+});
+
+function hideSuggestions() {
+  if (!suggestionState.visible) return;
+
+  suggestionState.visible = false;
+  suggestionState.matches = [];
+  suggestionState.matchesKey = "";
+  suggestionState.selected = 0;
+  suggestionState.offset = 0;
+
+  suggestionsBox.hide();
+  screen.render();
+}
+
+function renderSuggestions() {
+  const { matches, selected } = suggestionState;
+  const start = suggestionState.offset;
+
+  const boxWidth =
+    Math.floor(screen.width * 0.66);
+
+  const rows = matches
+    .slice(start, start + MAX_SUGGESTIONS)
+    .map((name, i) => {
+      const index = start + i;
+      const active = index === selected;
+      const cmd = COMMANDS.find(
+        c => c.name === name
+      );
+      const desc = cmd?.desc ?? "";
+
+      const nameWidth = name.length;
+      const maxDesc =
+        Math.max(8, boxWidth - nameWidth - 8);
+      const descClipped =
+        desc.length > maxDesc
+          ? desc.slice(0, maxDesc - 1) + "…"
+          : desc;
+
+      if (active) {
+        return (
+          `{${COLORS.cyan}-fg}› ${name}{/}` +
+          `{${COLORS.white}-fg} ${descClipped}{/}`
+        );
+      }
+
+      return (
+        `  ${name}` +
+        `{${COLORS.muted}-fg} ${descClipped}{/}`
+      );
+    });
+
+  suggestionsBox.height = rows.length + 2;
+  suggestionsBox.setContent(rows.join("\n"));
+  suggestionsBox.show();
+  screen.render();
+}
+
+function moveSuggestion(delta) {
+  if (!suggestionState.visible) return;
+
+  const total = suggestionState.matches.length;
+  if (!total) return;
+
+  let next = suggestionState.selected + delta;
+
+  if (next < 0) next = total - 1;
+  if (next >= total) next = 0;
+
+  suggestionState.selected = next;
+
+  // Garde la sélection visible dans la fenêtre.
+  if (next < suggestionState.offset) {
+    suggestionState.offset = next;
+  } else if (next >= suggestionState.offset + MAX_SUGGESTIONS) {
+    suggestionState.offset =
+      next - MAX_SUGGESTIONS + 1;
+  }
+
+  renderSuggestions();
+}
+
+function refreshSuggestions() {
+  const value = getInputValue();
+
+  const isCommandContext =
+    value.startsWith("/") &&
+    !value.includes(" ");
+
+  if (!isCommandContext) {
+    hideSuggestions();
+    return;
+  }
+
+  const query = value.toLowerCase();
+
+  const matches = COMMANDS
+    .filter(cmd => cmd.name.startsWith(query))
+    .map(cmd => cmd.name);
+
+  if (!matches.length) {
+    hideSuggestions();
+    return;
+  }
+
+  // Commande complète tapée → on ferme le menu (l'Entrée
+  // exécute directement la commande, pas besoin du menu).
+  const exactMatch =
+    matches.length === 1 &&
+    matches[0] === value;
+
+  if (exactMatch) {
+    hideSuggestions();
+    return;
+  }
+
+  const wasVisible = suggestionState.visible;
+  const matchesKey = matches.join(",");
+  const matchesChanged =
+    matchesKey !== suggestionState.matchesKey;
+
+  suggestionState.visible = true;
+  suggestionState.matches = matches;
+  suggestionState.matchesKey = matchesKey;
+
+  if (
+    !wasVisible ||
+    matchesChanged ||
+    suggestionState.selected >= matches.length
+  ) {
+    suggestionState.selected = 0;
+    suggestionState.offset = 0;
+  }
+
+  renderSuggestions();
+}
+
+function acceptSuggestion(withSubmit) {
+  if (!suggestionState.visible) return;
+
+  const { matches, selected } = suggestionState;
+  if (!matches.length) return;
+
+  const command = matches[selected];
+
+  if (withSubmit) {
+    clearInput();
+    hideSuggestions();
+    handleSubmit(command);
+    return;
+  }
+
+  // Tab : complète la commande dans l'entrée, on continue d'éditer.
+  setInputValue(command);
+  hideSuggestions();
+} 
+
+// La navigation ↑/↓, Tab et l'édition sont gérées dans le
+// handler global "screen.on('keypress')" (section INPUT).
 
 
 // ============================================================
@@ -875,15 +1306,25 @@ function pushConversation(line = "") {
   screen.render();
 }
 
-function addUserMessage(message) {
+function addUserMessage(message, files = []) {
   pushConversation("");
   pushConversation(
     `{${COLORS.muted}-fg}TOI{/}`
   );
 
-  pushConversation(
-    `{${COLORS.user}-fg}${message}{/}`
-  );
+  if (message) {
+    pushConversation(
+      `{${COLORS.user}-fg}${message}{/}`
+    );
+  }
+
+  for (const file of files) {
+    pushConversation(
+      `{${COLORS.muted}-fg}[FICHIER]{/} ` +
+      `{${COLORS.cyan}-fg}${file.name}{/} ` +
+      `{${COLORS.muted}-fg}(${file.mimeType} · ${formatBytes(file.size)}){/}`
+    );
+  }
 
   prepareToolActivity();
 }
@@ -901,7 +1342,7 @@ function addNexusMessage(message) {
 // COMMANDS
 // ============================================================
 
-function handleCommand(message) {
+async function handleCommand(message) {
   const [commandRaw, ...args] =
     message.trim().split(/\s+/);
 
@@ -913,13 +1354,18 @@ function handleCommand(message) {
         [
           "COMMANDES",
           "",
-          "/help              Afficher les commandes",
-          "/status            État de NEXUS",
-          "/project [nom]     Projet actif",
-          "/model [nom]       Modèle actif",
-          "/tools             Outils disponibles",
-          "/clear             Effacer la conversation",
-          "/exit              Quitter NEXUS",
+          "/help     Afficher les commandes",
+          "/status   État de NEXUS",
+          "/project  Projet actif",
+          "/model    Modèle actif",
+          "/tools    Outils disponibles",
+          "/attach   Ajouter des fichiers",
+          "          (ex: /attach doc.pdf img.png)",
+          "/files    Fichiers en attente",
+          "/detach   Retirer un fichier (index ou nom)",
+          "/detach all   Tout retirer",
+          "/clear    Effacer la conversation",
+          "/exit     Quitter NEXUS",
         ].join("\n")
       );
       break;
@@ -933,7 +1379,99 @@ function handleCommand(message) {
           `MODEL   ${nexusState.responseModel}`,
           `ROUTE   ${nexusState.route}`,
           `TOOL    ${nexusState.tool}`,
+          `FILES   ${pendingFiles.length} en attente`,
         ].join("\n")
+      );
+      break;
+
+    case "/attach":
+      if (!args.length) {
+        addNexusMessage(
+          "Usage : /attach <chemin> [chemin2 ...]"
+        );
+        break;
+      }
+
+      for (const rawPath of args) {
+        const filePath = path.resolve(rawPath);
+
+        try {
+          const attachment =
+            await readFileAsAttachment(filePath);
+
+          pendingFiles.push(attachment);
+
+          addNexusMessage(
+            `Fichier ajouté : ` +
+            `{${COLORS.user}-fg}${attachment.name}{/} ` +
+            `({${COLORS.muted}-fg}${attachment.mimeType} · ${formatBytes(attachment.size)}{/})`
+          );
+        } catch (error) {
+          addNexusMessage(
+            `{${COLORS.error}-fg}Erreur : ${error.message}{/}`
+          );
+        }
+      }
+
+      addNexusMessage(
+        pendingFiles.length
+          ? `${pendingFiles.length} fichier(s) en attente. Pose ensuite ta question.`
+          : "Aucun fichier en attente."
+      );
+      break;
+
+    case "/files":
+      if (!pendingFiles.length) {
+        addNexusMessage("Aucun fichier en attente.");
+        break;
+      }
+
+      addNexusMessage(
+        [
+          "FICHIERS EN ATTENTE",
+          "",
+          ...pendingFiles.map(
+            (f, i) =>
+              `{${COLORS.cyan}-fg}[${i}]{/} ${f.name} ` +
+              `({${COLORS.muted}-fg}${f.mimeType} · ${formatBytes(f.size)}{/})`
+          ),
+          "",
+          "Ils seront envoyés avec le prochain message.",
+        ].join("\n")
+      );
+      break;
+
+    case "/detach":
+      if (args[0]?.toLowerCase() === "all") {
+        pendingFiles.length = 0;
+        addNexusMessage("Fichiers retirés de la file.");
+        break;
+      }
+
+      if (!args.length) {
+        addNexusMessage(
+          "Usage : /detach <index> | <nom> | all"
+        );
+        break;
+      }
+
+      const target = args[0];
+
+      const index =
+        cmdFileIndex(pendingFiles, target);
+
+      if (index === -1) {
+        addNexusMessage(
+          `{${COLORS.error}-fg}Fichier introuvable : ${target}{/}`
+        );
+        break;
+      }
+
+      const removed =
+        pendingFiles.splice(index, 1)[0];
+
+      addNexusMessage(
+        `Fichier retiré : ${removed.name}`
       );
       break;
 
@@ -972,7 +1510,10 @@ function handleCommand(message) {
           "├─ WEATHER",
           "├─ WEB SEARCH",
           "├─ NAVIGATION",
-          "└─ GMAIL",
+          "├─ GMAIL",
+          "├─ CALENDAR",
+          "├─ HOME AUTOMATION",
+          "└─ NAS",
           "",
           "MCP",
           "└─ PLAYWRIGHT",
@@ -994,6 +1535,18 @@ function handleCommand(message) {
         `Commande inconnue : ${command}`
       );
   }
+}
+
+function cmdFileIndex(files, target) {
+  const asIndex = Number(target);
+
+  if (Number.isInteger(asIndex) && files[asIndex]) {
+    return asIndex;
+  }
+
+  return files.findIndex(
+    f => f.name === target
+  );
 }
 
 function prepareToolActivity() {
@@ -1062,13 +1615,14 @@ function finishToolActivity() {
 // REAL NEXUS
 // ============================================================
 
-async function realNexus(message) {
+async function realNexus(message, files = []) {
   setRoute("DIRECT");
   setTool("—");
   setOrbMode("THINKING");
 
   try {
     const answer = await askNexus(message, {
+      files,
       onEvent(event) {
         switch (event.type) {
           case "thinking":
@@ -1155,15 +1709,47 @@ let nexusBusy = false;
 // ============================================================
 // INPUT
 // ============================================================
-input.on("submit", async value => {
+async function handleSubmit(value) {
   inputIsReading = false;
 
-  const message =
+  const typed =
     String(value ?? "").trim();
 
-  input.clearValue();
+  clearInput();
+  hideSuggestions();
 
-  if (!message) {
+  let command = typed;
+
+  // Commande partielle (ex: "/att") + menu ouvert
+  // → l'Entrée exécute la commande sélectionnée dans le menu.
+  if (
+    typed.startsWith("/") &&
+    !typed.includes(" ") &&
+    suggestionState.visible &&
+    suggestionState.matches.length > 0
+  ) {
+    command =
+      suggestionState.matches[suggestionState.selected];
+  }
+
+  // ========================================================
+  // COMMANDS
+  // ========================================================
+
+  if (command.startsWith("/")) {
+    nexusBusy = true;
+
+    try {
+      await handleCommand(command);
+    } finally {
+      nexusBusy = false;
+    }
+
+    activateInput();
+    return;
+  }
+
+  if (!typed && pendingFiles.length === 0) {
     activateInput();
     return;
   }
@@ -1175,27 +1761,19 @@ input.on("submit", async value => {
   }
 
   // ========================================================
-  // COMMANDS
-  // ========================================================
-
-  if (message.startsWith("/")) {
-    handleCommand(message);
-
-    activateInput();
-    return;
-  }
-
-  // ========================================================
   // NEXUS
   // ========================================================
 
   nexusBusy = true;
 
-  addUserMessage(message);
+  const files = [...pendingFiles];
+  pendingFiles.length = 0;
+
+  addUserMessage(typed, files);
 
   try {
     const answer =
-      await realNexus(message);
+      await realNexus(typed, files);
 
     addNexusMessage(answer);
 
@@ -1212,22 +1790,26 @@ input.on("submit", async value => {
 
     activateInput();
   }
-});
-
-input.readEditor = () => {
-  return;
-};
+}
 
 
 // ============================================================
 // EVENTS
 // ============================================================
 
-screen.key(["escape", "C-c"], shutdown);
+screen.key(["C-c"], shutdown);
 
 screen.on("resize", () => {
   updateLayout();
   screen.render();
+});
+
+// Évite que le clic sur le terminal n'interfère avec la saisie :
+// un release de souris remet simplement la saisie en route.
+screen.on("mouse", data => {
+  if (data.action === "mouseup" && !inputIsReading) {
+    activateInput();
+  }
 });
 
 
@@ -1260,7 +1842,7 @@ function shutdown() {
   `{${COLORS.nexus}-fg}NEXUS{/}`,
   `{${COLORS.white}-fg}CLI initialisé. Neural Core opérationnel.{/}`,
   "",
-  `{${COLORS.muted}-fg}Commandes disponibles : /help{/}`,
+  `{${COLORS.muted}-fg}Tape / pour explorer les commandes — ↑/↓ pour naviguer, Tab pour compléter.{/}`,
   "",
 ].forEach(line =>
   conversationPanel.pushLine(line)
@@ -1273,6 +1855,8 @@ function shutdown() {
 
 async function startCLI() {
   updateLayout();
+
+  renderInput();
 
   orbAnimation = setInterval(
     renderOrb,
