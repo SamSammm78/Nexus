@@ -464,8 +464,10 @@ src/tools/files.js               → file_search / file_list / file_read
   configurée puis repli automatique sur l'autre source.
 - `file_list` : contenu d'un dossier (local : chemin relatif à la racine ;
   Drive : `folderId`, vide = « Mon Drive »).
-- `file_read` : lecture texte (fichiers locaux via `path`, Drive via `fileId`),
-  fichiers binaires signalés sans contenu.
+- `file_read` : lecture texte (fichiers locaux via `path`, Drive via `fileId`).
+  Les IMAGES et PDF sont joints automatiquement au modèle pour analyse
+  (via `functionResponse.parts` `inlineData`, lire les fichiers visuels sans
+  `/attach`). Au-delà de ~18 Mo, le fichier est signalé sans contenu.
 - Drive est branché sur le même OAuth que Gmail/Calendar
   (scope supplémentaire `drive.readonly` — voir re-autorisation ci-dessous).
 - Config : `data/files-config.json` (`root`, `sourcePriority`), surchargée

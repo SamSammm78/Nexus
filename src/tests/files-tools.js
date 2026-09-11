@@ -32,6 +32,14 @@ fs.writeFileSync(
   path.join(TMP, "Documents", "notes-nexus.txt"),
   "NEXUS files V1 ok"
 );
+fs.writeFileSync(
+  path.join(TMP, "Documents", "visuel.png"),
+  Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+);
+fs.writeFileSync(
+  path.join(TMP, "Documents", "archive.zip"),
+  "PKfake"
+);
 
 const settings = await import(
   "../services/files/settings.js"
@@ -116,15 +124,32 @@ test("listLocalFolder : racine et sous-dossier", () => {
   assert.ok(cours.some((e) => e.name === "analyse1.md"));
 });
 
-test("readLocalFile : texte, binaire et absent", () => {
+test("readLocalFile : texte, image/PDF joints, binaire autre, absent", () => {
   const text = readLocalFile("cours/analyse1.md");
 
   assert.ok(text.text.includes("Limites et dérivées"));
   assert.equal(text.truncated, false);
 
-  const binary = readLocalFile("TD/td-math.pdf");
+  const pdf = readLocalFile("TD/td-math.pdf");
 
-  assert.equal(binary.binary, true);
+  assert.equal(pdf.binary, true);
+  assert.equal(pdf.mimeType, "application/pdf");
+  assert.ok(typeof pdf.base64 === "string");
+  assert.ok(pdf.base64.length > 0);
+
+  const png = readLocalFile("visuel.png");
+
+  assert.equal(png.binary, true);
+  assert.equal(png.mimeType, "image/png");
+  assert.equal(
+    Buffer.from(png.base64, "base64").subarray(0, 4).toString("hex"),
+    "89504e47"
+  );
+
+  const zip = readLocalFile("archive.zip");
+
+  assert.equal(zip.binary, true);
+  assert.equal(zip.base64, undefined);
 
   assert.equal(readLocalFile("cours/absente.md"), null);
 });
@@ -136,6 +161,19 @@ test("readLocalFile : troncature maxChars", () => {
 
   assert.equal(text.truncated, true);
   assert.ok(text.text.length <= 5);
+});
+
+test("readLocalFile : image trop lourde → signalée sans contenu", () => {
+  fs.writeFileSync(
+    path.join(TMP, "Documents", "huge.png"),
+    Buffer.alloc(20 * 1024 * 1024)
+  );
+
+  const result = readLocalFile("huge.png");
+
+  assert.equal(result.binary, true);
+  assert.equal(result.tooLarge, true);
+  assert.equal(result.base64, undefined);
 });
 
 test("file_search : retourne la source locale par défaut", async () => {

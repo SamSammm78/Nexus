@@ -224,7 +224,7 @@ const file_readTool = {
   declaration: {
     name: "file_read",
     description:
-      "Lit le contenu d'un fichier texte (local ou Google Drive). Pour un fichier binaire (PDF, image...), indique son nom et sa taille sans contenu.",
+      "Lit le contenu d'un fichier : texte brut (local ou Drive), et joint directement les IMAGES et PDF au modèle pour analyse. Autres binaires signalés sans contenu.",
     parameters: {
       type: Type.OBJECT,
       properties: {

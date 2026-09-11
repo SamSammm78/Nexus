@@ -415,6 +415,42 @@ export async function askNexus(
           });
         }
 
+        // Fichiers visuels (image, PDF) : le contenu est joint au
+        // modèle via functionResponse.parts.inlineData au lieu du JSON.
+        const filePart = [];
+
+        if (
+          result &&
+          typeof result === "object" &&
+          typeof result.base64 === "string" &&
+          typeof result.mimeType === "string"
+        ) {
+          filePart.push({
+            inlineData: {
+              mimeType: result.mimeType,
+              data: result.base64,
+            },
+          });
+
+          const { base64, ...rest } = result;
+
+          result = {
+            ...rest,
+            attached: true,
+            label:
+              rest.label ??
+              rest.name ??
+              "fichier visuel",
+          };
+
+          onEvent({
+            type: "file_attached",
+            tool: toolName,
+            mimeType: rest.mimeType,
+            size: rest.size,
+          });
+        }
+
         functionResponses.push({
           functionResponse: {
             id: call.id,
@@ -422,6 +458,9 @@ export async function askNexus(
             response: {
               result,
             },
+            ...(filePart.length
+              ? { parts: filePart }
+              : {}),
           },
         });
       }

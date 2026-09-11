@@ -88,6 +88,9 @@ FILES RULES
   (source drive). Donne à l'utilisateur le chemin réel du fichier.
 - Les fichiers binaires (PDF, images...) sont signalés sans
   contenu : indique leur emplacement à l'utilisateur.
+- Pour les IMAGES et PDF : file_read les joins directement au
+  modèle (aucun /attach nécessaire). Si le fichier est trop lourd,
+  signale-le et indique son chemin.
 
 PROJECT RULES
 

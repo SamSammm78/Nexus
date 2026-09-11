@@ -14,6 +14,11 @@ import {
 import { homedir } from "node:os";
 
 import { resolveRoot } from "./settings.js";
+import {
+  isVisualMime,
+  detectVisualMime,
+  MAX_INLINE_BYTES,
+} from "../../utils/fs.js";
 
 const MAX_DEPTH = 6;
 const MAX_READ_CHARS = 300_000;
@@ -230,9 +235,30 @@ export function readLocalFile(path, {
   }
 
   if (isBinary(fullPath.split("/").pop())) {
+    if (!isVisualMime(detectVisualMime(fullPath))) {
+      return {
+        binary: true,
+        size: stats.size,
+      };
+    }
+
+    if (stats.size > MAX_INLINE_BYTES) {
+      return {
+        binary: true,
+        mimeType: detectVisualMime(fullPath),
+        size: stats.size,
+        tooLarge: true,
+      };
+    }
+
+    const data = readFileSync(fullPath);
+
     return {
       binary: true,
+      name: fullPath.split("/").pop(),
+      mimeType: detectVisualMime(fullPath),
       size: stats.size,
+      base64: data.toString("base64"),
     };
   }
 

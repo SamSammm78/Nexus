@@ -1,6 +1,10 @@
 import { google } from "googleapis";
 
 import { getGoogleAuth } from "./auth.js";
+import {
+  isVisualMime,
+  MAX_INLINE_BYTES,
+} from "../../utils/fs.js";
 
 const TEXT_MIME = "text/plain";
 const MAX_READ_CHARS = 300_000;
@@ -90,18 +94,56 @@ export async function readDriveFile(fileId, {
     (async () => {
       const meta = await drive.files.get({
         fileId,
-        fields: "id,mimeType",
+        fields: "id,mimeType,size",
       });
 
-      return meta.data.mimeType;
+      return {
+        mimeType: meta.data.mimeType,
+        size: meta.data.size
+          ? Number(meta.data.size)
+          : null,
+      };
     })();
 
-  const finalMime = typeof resolvedMime === "string"
-    ? resolvedMime
+  const finalMeta = typeof resolvedMime === "string"
+    ? { mimeType: resolvedMime, size: null }
     : await resolvedMime;
+
+  const { mimeType: finalMime, size } = finalMeta;
 
   const isNative =
     finalMime?.startsWith(GOOGLE_NATIVE_PREFIX);
+
+  if (!isNative && isVisualMime(finalMime)) {
+    if (size && size > MAX_INLINE_BYTES) {
+      return {
+        fileId,
+        mimeType: finalMime,
+        binary: true,
+        size,
+        tooLarge: true,
+      };
+    }
+
+    const media = await drive.files.get({
+      fileId,
+      alt: "media",
+    });
+
+    const buffer =
+      media.data &&
+      typeof media.data !== "string"
+        ? media.data
+        : Buffer.from(media.data ?? "");
+
+    return {
+      fileId,
+      mimeType: finalMime,
+      binary: true,
+      size: buffer.length,
+      base64: buffer.toString("base64"),
+    };
+  }
 
   let data;
 
