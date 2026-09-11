@@ -449,6 +449,8 @@ const file_downloadTool = {
 };
 
 
+export { file_downloadTool };
+
 export const filesTools = [
   file_searchTool,
   file_listTool,
