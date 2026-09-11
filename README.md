@@ -72,7 +72,11 @@ Nexus/
 │   │   ├── client.js
 │   │   └── servers.js
 │   ├── memory/
-│   │   └── shortTerm.js
+│   │   ├── shortTerm.js             # fenêtre de conversation courante
+│   │   ├── brain.js                 # Memory Brain: remember/recall/update/forget
+│   │   └── notes.js                 # fichiers .md + frontmatter (vault Obsidian)
+│   ├── utils/
+│   │   └── fs.js
 │   ├── services/
 │   │   ├── google/
 │   │   │   ├── auth.js
@@ -92,6 +96,7 @@ Nexus/
 │   │   ├── weather.js
 │   │   ├── nas.js
 │   │   ├── home_automation.js
+│   │   ├── memory.js
 │   │   ├── google/
 │   │   │   ├── gmail.js
 │   │   │   └── calendar.js
@@ -106,6 +111,7 @@ Nexus/
 │   └── google-token.json
 ├── data/
 │   └── current-route.json
+├── memories/                        # vault Obsidian (notes de la mémoire longue)
 ├── map.html
 ├── .env
 ├── package.json
@@ -305,6 +311,10 @@ export const nativeTools = [
 
   ...gmailTools,
   ...calendarTools,
+  ...filesTools,
+
+  ...memoryTools,
+  ...projectTools,
 
   changeDeviceState,
   getDeviceId,
@@ -429,11 +439,50 @@ Tools: list / read events, create events, update and delete events.
 After Gmail and Calendar:
 
 ```text
-Google Drive
 Google Tasks
 ```
 
 The same OAuth foundation should be reused.
+
+---
+
+## Files V1 ✅ (Google Drive + accès local)
+
+Un système de fichiers unifié : vos documents locaux
+(par défaut `~/Documents`, avec vos dossiers cours / TD)
+et Google Drive, avec **le LOCAL en source prioritaire**
+(modifiable d'un réglage).
+
+```text
+src/services/files/settings.js   → racine + priorité (data/files-config.json)
+src/services/files/local.js      → recherche / list / lecture disque
+src/services/google/drive.js     → recherche / list / lecture Google Drive
+src/tools/files.js               → file_search / file_list / file_read
+```
+
+- `file_search` : recherche par nom, source `auto` = source prioritaire
+  configurée puis repli automatique sur l'autre source.
+- `file_list` : contenu d'un dossier (local : chemin relatif à la racine ;
+  Drive : `folderId`, vide = « Mon Drive »).
+- `file_read` : lecture texte (fichiers locaux via `path`, Drive via `fileId`),
+  fichiers binaires signalés sans contenu.
+- Drive est branché sur le même OAuth que Gmail/Calendar
+  (scope supplémentaire `drive.readonly` — voir re-autorisation ci-dessous).
+- Config : `data/files-config.json` (`root`, `sourcePriority`), surchargée
+  par `NEXUS_FILES_ROOT`. Env préfixé : `NEXUS_FILES_CONFIG`.
+- CLI : `/files` (statut), `/files root <chemin>`, `/files priority <local|drive>`,
+  `/files pending` (fichiers en attente d'envoi).
+
+### Re-autorisation Google pour le scope Drive
+
+Le scope `drive.readonly` a été ajouté après votre autorisation initiale
+Gmail/Calendrier : un token déjà généré ne couvrant pas ce scope doit être
+régénéré.
+
+```bash
+rm credentials/google-token.json
+# au prochain appel Drive (ou /files), NEXUS demande l'autorisation Drive
+```
 
 ---
 
@@ -536,40 +585,139 @@ Architecture:
                          LLM
 ```
 
-### Memory V1
+### Memory V1 ✅ (Obsidian vault)
 
-Recommended:
+La mémoire longue est un **vault Obsidian** : des fichiers Markdown
+avec frontmatter YAML, lisibles et éditables directement dans Obsidian
+(graph, backlinks, tags). Aucun plugin ni service externe.
 
-```text
-SQLite
-```
-
-Database:
+Emplacement (configurable via `NEXUS_VAULT`) :
 
 ```text
-data/nexus-memory.db
+memories/
 ```
 
-Possible tables:
+Fichiers :
 
 ```text
-memories
-projects
-project_events
-decisions
-relationships
+src/memory/brain.js      # API: remember / recall / update / forget / list / stats + projet + relations
+src/memory/notes.js      # gestion des notes .md + frontmatter (+ champs projet, relations)
+src/memory/state.js      # état persistant (projet actif)
+src/tools/memory.js      # outils modèles: memory_add / search / list / update / forget
+src/tools/project.js     # outils projets: project_init / set / checkpoint / log / status / resume / list
 ```
 
-Example memory:
+Types de mémoires :
 
-```json
-{
-  "type": "decision",
-  "projectId": "nexus",
-  "content": "Gemini remains the main router.",
-  "importance": 0.9,
-  "confidence": 1.0
-}
+```text
+fact
+decision
+preference
+event
+note
+project      (souche du projet, frontmatter état courant)
+checkpoint   (bilan chaîné dans le temps)
+project
+```
+
+Nom des fichiers (style « second brain ») :
+
+```text
+<date>-<titre-court-significatif>.md      ex. 2026-09-10-utilise-nas-synology.md
+projets/<projet>.md                       ex. projets/nexus.md  (souche du projet)
+```
+
+Note type: `importance` (0.0–1.0) + `confidence` (0–1) rangent les résultats
+du rappel (le plus pertinent d'abord). Chaque note porte un `id` stable en
+frontmatter (le nom de fichier reste donc libre d'être renommé).
+
+Example memory (fichier `memories/*.md`) :
+
+```markdown
+---
+id: 2026-09-xxx
+title: Utilise un NAS Synology
+type: decision
+project: nexus
+importance: 0.9
+confidence: 1
+tags: nas, architecture
+created: 2026-09-10T...
+updated: 2026-09-10T...
+---
+
+Gemini reste le routeur principal.
+
+**Connexions :**
+- [[projets/nexus]]
+- ↑ [[2026-09-09-echange-precedent]]
+```
+
+Connexions dans le graphe Obsidian :
+
+- chaque note liée à un projet pointe sa **souche** `[[projets/nexus]]`
+  (le graphe forme un hub + rayons) ;
+- les échanges (`event`) sont **chaînés** : chaque note pointe la précédente
+  (`↑ [[...]]`) pour former une timeline ;
+- vue Graphe dans Obsidian (`Cmd+G`) après avoir ouvert `memories/`
+  comme vault.
+
+Intégration :
+
+- **mémorisation sélective** : les échanges ne sont PAS archivés
+  automatiquement. NEXUS ne retient que ce qui a de la valeur (faits,
+  préférences, décisions, projets, agenda). Une note avec `projectId`
+  ne crée JAMAIS de souche projet : `project_init` est le seul moyen ;
+- **projet actif** : le rappel automatique est filtré par le projet actif
+  (`/project <nom>`, persisté dans `data/nexus-state.json`), avec repli
+  sur la mémoire globale si le projet ne fournit rien ;
+- rappel : les notes pertinentes (mots-clés du message) sont injectées
+  en tête du message utilisateur de chaque demande (jamais dans
+  `systemInstruction`) ;
+- **CLI** : `/memory search|get|list|forget|count` pour l'utilisateur,
+  et `/status` affiche le nombre de notes et leur répartition par type ;
+- outils disponibles sur **toutes** les routes (DIRECT, CALENDAR, GMAIL,
+  NAS... : NEXUS peut donc retenir une information pendant n'importe
+  quelle tâche, ex. un agenda ajouté au calendrier) :
+  `memory_add`, `memory_search`, `memory_list`,
+  `memory_update`, `memory_forget`.
+- état du second cerveau : `data/nexus-state.json` (projet actif).
+- **liens entre notes** : à la création, NEXUS relie automatiquement la
+  note aux notes déjà liées par le sujet (mots-clés rares pondérés IDF +
+  tags + même projet) — lien `↔` dans `**Connexions :**` et backlink sur
+  les notes cibles. `/memory relink` reconstruit les liens sur tout le vault.
+- **recherche élargie** : `recallMemories` normalise les accents et élargit
+  les termes de recherche via une table de synonymes légères (ex. « étude »
+  ↔ étudiant, université, école…). En l'absence de match, NEXUS remonte
+  les notes les plus importantes (core memories). Les résultats de
+  `memory_search` et `memory_list` restent compacts.
+
+### Project Copilot Core V1 ✅
+
+Couche projet superposée à la mémoire longue : chaque projet vit
+comme une **souche** `projets/<slug>.md` (type `project`) dans le
+vault, avec l'état courant dans le frontmatter (status, goal,
+milestones, nextAction, lastCheckpoint). Un **index** `projets/_index.md`
+généré automatiquement liste tous les projets (exclu du scan modèle).
+
+Outils (route NATIVE) :
+
+| Outil | Rôle |
+|---|---|
+| `project_init` | crée la souche + index |
+| `project_set` | met à jour le frontmatter (status, goal, milestones, nextAction) |
+| `project_checkpoint` | écrit un bilan chaîné (type `checkpoint`, parent) + met à jour hub |
+| `project_log` | journalise une activité ou décision liée au projet |
+| `project_status` | état courant + derniers logs |
+| `project_resume` | project_resume enrichi : à appeler quand l'utilisateur dit « on reprend X » |
+| `project_list` | liste tous les projets (nom, statut, prochaine action) |
+
+CLI :
+
+```text
+/project <nom>     Initialise / affiche l'état d'un projet
+/project delete X  Supprime le projet (ses notes deviennent de la mémoire générale)
+/projects          Liste de tous les projets
 ```
 
 Future Memory V2:
@@ -585,6 +733,37 @@ importance
 relationships
 graph-like memory
 ```
+
+---
+
+## Budget tokens & contexte
+
+Mesures réelles (estimation ~4 chars/token, `gemini-3.5-flash-lite`) :
+
+| Composant par requête | Coût | Type |
+|---|---|---|
+| `systemPrompt` | ~1 000 tokens | fixe |
+| Déclarations d'outils (route NATIVE, ~58 outils) | ~5 800 tokens | fixe (dont ~700 tokens mémoire sur toutes routes + ~600 tokens projet NATIVE + ~250 tokens Files NATIVE) |
+| Rappel mémoire (≤3 extraits, ~160 chars) | ~50–150 tokens | borné |
+| Historique court terme (12 messages) | ~2 500+ tokens | variable, croît |
+| Résultats complets de `memory_search` | jusqu'à ~5 000 tokens (avant) | compacté depuis |
+
+Principes appliqués :
+
+1. **La mémoire ne va PAS dans `systemInstruction`.** Le rappel est préfixé
+   au message utilisateur → le préfixe statique (prompt système + outils +
+   historique) reste identique entre requêtes et peut être **mis en cache**
+   par Gemini (économie majeure sur la partie fixe ~5.8k tokens).
+2. **`memory_search` / `memory_list` sont compactés** : ils renvoient
+   `id, title, type, importance, extrait (~150 chars)` au lieu du contenu
+   complet → supprime les pics de tokens liés à la mémoire.
+3. **Instrumentation** : chaque réponse expose `usageMetadata`
+   (`promptTokenCount`, `candidatesTokenCount`, `cachedContentTokenCount`),
+   agrégé par la CLI sous forme de ligne `[TOKENS] entrée · sortie · cache`.
+
+Le gros levier restant est l'historique court terme : il grandit avec la
+conversation. Piste : résumer/soumettre les vieux échanges ou borner la
+taille des contenus d'outils stockés.
 
 ---
 
@@ -792,6 +971,7 @@ Commands:
 /files    Fichiers en attente
 /detach   Retirer un fichier (index, nom ou all)
 /project  Changer de projet (nom)
+/memory   Mémoire longue (search / get / list / forget / count)
 /model    Changer de modèle (nom)
 /tools    Outils disponibles
 /clear    Effacer la conversation
@@ -823,6 +1003,8 @@ Example `.env`:
 
 ```env
 GEMINI_API_KEY=your_key_here
+
+NEXUS_VAULT=                       # facultatif: chemin du vault Obsidian (défaut: ./memories)
 
 AI_PROVIDER=local
 LOCAL_MODEL=qwen
@@ -974,9 +1156,10 @@ Sending → explicit confirmation
 ### Files
 
 ```text
-Read → authorized directories only
-Write → explicit permission
-Delete → confirmation
+Local read  → root configurée seulement (~/Documents par défaut)
+Local write → explicit permission (à venir)
+Drive read  → scope drive.readonly (lecture seule)
+Delete      → confirmation
 ```
 
 ### Credentials
@@ -986,6 +1169,7 @@ Never commit:
 ```text
 .env
 credentials/
+memories/
 OAuth tokens
 API keys
 ```
@@ -1024,77 +1208,48 @@ Avoid infinite retry loops.
 ## Roadmap
 
 ```text
+✅ TERMINÉ
+
 1. ✅ Gmail V1 (read, draft, send with confirmation)
-   ✅ Google Calendar V1
-   ✅ NAS (Wake on LAN, auth, folder listing)
-   ✅ Tuya home automation
-   ✅ CLI: command suggestions, file attach, custom input
+2. ✅ Google Calendar V1
+3. ✅ Tuya home automation
+4. ✅ NAS (Wake on LAN, auth, folder listing)
+5. ✅ Memory Brain V1 (notes Obsidian)
+   - remember / recall / update / forget
+   - types: fact, decision, preference, event, note, project, checkpoint
+   - importance + confidence ranking
+   - rappel automatique (projet actif + core memories)
+   - liens ↔ entre notes liées + /memory relink
+   - recherche élargie (accents + synonymes)
+6. ✅ Project Copilot Core
+   - registry • active project • goals + milestones • checkpoints
+   - resume • next action • activity log • decision log
+7. ✅ Compact CLI (command suggestions, file attach, custom input)
+8. ✅ Files V1 — accès local + Google Drive (priorité configurable)
+   - file_search : recherche unifiée locale + Drive avec repli automatique
+   - file_list / file_read : navigation + lecture texte / binaire
+   - route FILES (router), disponible aussi sur NATIVE
+   - configuration : racine locale, priorité local / drive, CLI /files
 
-2. Project Copilot Core
-   - project registry
-   - active project
-   - goals
-   - milestones
-   - checkpoints
-   - resume
-   - next action
-   - activity log
-   - decision log
+À VENIR
 
-3. Memory Brain V1
-   - SQLite
-   - save/search/update/forget
-   - project memory
-   - decisions
-   - events
-   - preferences
-
-4. Google Drive
-
-5. Google Tasks
-
-6. Voice Overlay
-   - reactive orb
-   - STT
-   - TTS
-   - ambient UI
-
-7. Context Copilot
-
-8. Deep VS Code integration
-
-9. Compact CLI ✅ (see CLI section)
-
-10. Location and personal places
-
-11. Google Calendar ✅ (see Calendar section)
-
-12. Intelligent error handling
-
-13. Local file access
-
-14. Persistent NEXUS Core service
-
-15. Full Workspace / HUD
-
-16. Proactivity
-
-17. Memory Brain V2
-
-18. Advanced local AI
-
-19. Vault / Knowledge Base
+9. Google Tasks
+10. Voice Overlay (reactive orb • STT • TTS • ambient UI)
+11. Context Copilot
+12. Deep VS Code integration
+13. Location and personal places
+14. Intelligent error handling
+15. Persistent NEXUS Core service
+16. Full Workspace / HUD
+17. Proactivity
+18. Memory Brain V2
+19. Advanced local AI
+20. Vault / Knowledge Base
 ```
 
 Near-term order:
 
 ```text
-Project Copilot Core
-  ↓
-Memory Brain V1
-  ↓
-Google Drive
-  ↓
 Google Tasks
   ↓
 Voice Overlay
@@ -1225,6 +1380,7 @@ local AI abstraction
 LM Studio
 Ollama experimentation
 short-term memory
+Memory Brain V1 (notes Obsidian)
 CLI: command suggestions, file attachment, custom input
 voice orb prototypes
 HUD prototypes

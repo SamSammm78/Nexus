@@ -6,6 +6,27 @@ import {
   startNexus,
   askNexus,
 } from "../agent/nexus.js";
+import {
+  getActiveProject,
+  setActiveProject,
+} from "../memory/state.js";
+import {
+  recallMemories,
+  listMemories,
+  forgetMemory,
+  memoryStats,
+  getMemory,
+  initProject,
+  projectResume,
+  listProjects,
+  removeProject,
+  relinkMemories,
+} from "../memory/brain.js";
+import {
+  getFilesSettings,
+  setFilesRoot,
+  setFilesPriority,
+} from "../services/files/settings.js";
 
 // ============================================================
 // FILES
@@ -46,6 +67,14 @@ function detectMimeType(filePath) {
   const ext = path.extname(filePath).toLowerCase();
 
   return MIME_BY_EXT[ext] ?? "text/plain";
+}
+
+function truncate(text, max) {
+  const value = String(text ?? "");
+
+  return value.length > max
+    ? `${value.slice(0, max - 1)}…`
+    : value;
 }
 
 function formatBytes(bytes) {
@@ -480,9 +509,11 @@ const COMMANDS = [
   { name: "/help",    desc: "Afficher l'aide des commandes" },
   { name: "/status",  desc: "État de NEXUS" },
   { name: "/attach",  desc: "Ajouter des fichiers (chemins)" },
-  { name: "/files",   desc: "Fichiers en attente" },
+  { name: "/files",   desc: "Fichiers : statut / root <chem> / priority <local|drive> / pending" },
   { name: "/detach",  desc: "Retirer un fichier (index, nom ou all)" },
-  { name: "/project", desc: "Changer de projet (nom)" },
+  { name: "/project", desc: "Projet actif (état / initialise)" },
+  { name: "/projects", desc: "Liste des projets" },
+  { name: "/memory",  desc: "Mémoire longue (search/get/list/forget/count)" },
   { name: "/model",   desc: "Changer de modèle (nom)" },
   { name: "/tools",   desc: "Outils disponibles" },
   { name: "/clear",   desc: "Effacer la conversation" },
@@ -930,6 +961,9 @@ function renderCoreInfo() {
     `{${COLORS.muted}-fg}TOOL   {/}  ` +
     `{${COLORS.tool}-fg}${nexusState.tool}{/}\n\n` +
 
+    `{${COLORS.muted}-fg}MÉMOIRE{/} ` +
+    `{${COLORS.white}-fg}${memoryStats().total} notes{/}\n\n` +
+
     `{${COLORS.muted}-fg}/help · ESC quitter{/}`
   );
 }
@@ -1338,6 +1372,28 @@ function addNexusMessage(message) {
   }
 }
 
+function showUsage(usage = {}) {
+  const parts = [];
+
+  parts.push(
+    `entrée ${usage.promptTokenCount ?? 0}`
+  );
+  parts.push(
+    `sortie ${usage.candidatesTokenCount ?? 0}`
+  );
+
+  const cached =
+    usage.cachedContentTokenCount ?? 0;
+
+  if (cached > 0) {
+    parts.push(`cache ${cached}`);
+  }
+
+  pushConversation(
+    `{${COLORS.muted}-fg}[TOKENS] ${parts.join(" · ")}{/}`
+  );
+}
+
 // ============================================================
 // COMMANDS
 // ============================================================
@@ -1356,12 +1412,14 @@ async function handleCommand(message) {
           "",
           "/help     Afficher les commandes",
           "/status   État de NEXUS",
-          "/project  Projet actif",
+          "/project  Projet actif (état)",
+          "/projects Liste des projets",
+          "/memory   Mémoire longue",
           "/model    Modèle actif",
           "/tools    Outils disponibles",
           "/attach   Ajouter des fichiers",
           "          (ex: /attach doc.pdf img.png)",
-          "/files    Fichiers en attente",
+          "/files    Fichiers : statut, root, priority, pending",
           "/detach   Retirer un fichier (index ou nom)",
           "/detach all   Tout retirer",
           "/clear    Effacer la conversation",
@@ -1371,17 +1429,34 @@ async function handleCommand(message) {
       break;
 
     case "/status":
-      addNexusMessage(
-        [
-          `CORE    ${nexusState.status}`,
-          `PROJECT ${nexusState.project}`,
-          `ROUTER  ${nexusState.routerModel}`,
-          `MODEL   ${nexusState.responseModel}`,
-          `ROUTE   ${nexusState.route}`,
-          `TOOL    ${nexusState.tool}`,
-          `FILES   ${pendingFiles.length} en attente`,
-        ].join("\n")
-      );
+      {
+        const stats = memoryStats();
+
+        const breakdown =
+          Object.entries(stats.byType)
+            .sort((a, b) => b[1] - a[1])
+            .map(
+              ([type, count]) =>
+                `${type} ${count}`
+            )
+            .join(" · ") || "aucune";
+
+        const { sourcePriority } = getFilesSettings();
+
+        addNexusMessage(
+          [
+            `CORE    ${nexusState.status}`,
+            `PROJECT ${nexusState.project}`,
+            `ROUTER  ${nexusState.routerModel}`,
+            `MODEL   ${nexusState.responseModel}`,
+            `ROUTE   ${nexusState.route}`,
+            `TOOL    ${nexusState.tool}`,
+            `FILES   ${pendingFiles.length} en attente · ` +
+              `${sourcePriority === "drive" ? "Drive" : "local"} prioritaire`,
+            `MÉMOIRE ${stats.total} notes (${breakdown})`,
+          ].join("\n")
+        );
+      }
       break;
 
     case "/attach":
@@ -1420,26 +1495,73 @@ async function handleCommand(message) {
       );
       break;
 
-    case "/files":
-      if (!pendingFiles.length) {
-        addNexusMessage("Aucun fichier en attente.");
+    case "/files": {
+      const sub = args[0]?.toLowerCase();
+
+      if (sub === "pending") {
+        if (!pendingFiles.length) {
+          addNexusMessage("Aucun fichier en attente.");
+          break;
+        }
+
+        addNexusMessage(
+          [
+            "FICHIERS EN ATTENTE",
+            "",
+            ...pendingFiles.map(
+              (f, i) =>
+                `{${COLORS.cyan}-fg}[${i}]{/} ${f.name} ` +
+                `({${COLORS.muted}-fg}${f.mimeType} · ${formatBytes(f.size)}{/})`
+            ),
+            "",
+            "Ils seront envoyés avec le prochain message.",
+          ].join("\n")
+        );
         break;
       }
 
+      if (sub === "root") {
+        const newRoot = args.slice(1).join(" ");
+
+        if (!newRoot) {
+          addNexusMessage("Usage : /files root <chemin> (ex: ~/Documents)");
+          break;
+        }
+
+        const resolved = setFilesRoot(newRoot);
+        addNexusMessage(`Racine fichiers définie : ${resolved}`);
+        break;
+      }
+
+      if (sub === "priority") {
+        const value = args[1]?.toLowerCase();
+
+        if (!["local", "drive"].includes(value)) {
+          addNexusMessage("Usage : /files priority local | drive");
+          break;
+        }
+
+        setFilesPriority(value);
+        addNexusMessage(
+          `Source prioritaire des fichiers : ${value === "local" ? "LOCAL (Documents)" : "GOOGLE DRIVE"}.`
+        );
+        break;
+      }
+
+      const { root, sourcePriority } = getFilesSettings();
+
       addNexusMessage(
         [
-          "FICHIERS EN ATTENTE",
+          "FICHIERS",
           "",
-          ...pendingFiles.map(
-            (f, i) =>
-              `{${COLORS.cyan}-fg}[${i}]{/} ${f.name} ` +
-              `({${COLORS.muted}-fg}${f.mimeType} · ${formatBytes(f.size)}{/})`
-          ),
+          `Racine locale : {${COLORS.cyan}-fg}${root}{/}`,
+          `Source prioritaire : {${COLORS.cyan}-fg}${sourcePriority === "local" ? "LOCAL (disque)" : "GOOGLE DRIVE"}{/}`,
           "",
-          "Ils seront envoyés avec le prochain message.",
+          "Commandes : /files root <chemin> · /files priority <local|drive> · /files pending",
         ].join("\n")
       );
       break;
+    }
 
     case "/detach":
       if (args[0]?.toLowerCase() === "all") {
@@ -1476,14 +1598,252 @@ async function handleCommand(message) {
       break;
 
     case "/project":
+      if (args.length && args[0] === "delete") {
+        const target = args.slice(1).join(" ");
+
+        if (!target) {
+          addNexusMessage(
+            "Usage : /project delete <nom>"
+          );
+          break;
+        }
+
+        try {
+          const result = removeProject(target);
+
+          if (nexusState.project === target) {
+            nexusState.project =
+              setActiveProject("NEXUS");
+            renderCoreInfo();
+          }
+
+          addNexusMessage(
+            `Projet « ${result.removed} » supprimé. ` +
+            `${result.orphanedNotes} note(s) restée(s) en mémoire générale.`
+          );
+        } catch (error) {
+          addNexusMessage(
+            `{${COLORS.error}-fg}` +
+            `${error.message}{/}`
+          );
+        }
+        break;
+      }
+
       if (args.length) {
-        nexusState.project = args.join(" ");
+        nexusState.project =
+          setActiveProject(args.join(" "));
+
+        try {
+          initProject({ name: nexusState.project });
+        } catch (error) {
+          addNexusMessage(
+            `{${COLORS.error}-fg}` +
+            `Erreur mémoire : ${error.message}{/}`
+          );
+        }
+
         renderCoreInfo();
       }
 
-      addNexusMessage(
-        `Projet actif : ${nexusState.project}`
-      );
+      {
+        const resume =
+          projectResume(nexusState.project) ??
+          { status: "active", goal: null, nextAction: null };
+
+        const parts = [
+          `PROJECT ${nexusState.project}`,
+          `STATUS  ${resume.status}`,
+        ];
+
+        if (resume.goal) {
+          parts.push(`GOAL    ${resume.goal}`);
+        }
+
+        if (resume.nextAction) {
+          parts.push(
+            `NEXT    ${resume.nextAction}`
+          );
+        }
+
+        if (resume.lastCheckpoint) {
+          parts.push(
+            `CHECKPOINT ${resume.lastCheckpoint}`
+          );
+        }
+
+        addNexusMessage(parts.join("\n"));
+      }
+      break;
+
+    case "/projects":
+      {
+        const projects = listProjects();
+
+        if (!projects.length) {
+          addNexusMessage(
+            "Aucun projet mémorisé."
+          );
+          break;
+        }
+
+        addNexusMessage(
+          projects
+            .map(
+              p =>
+                `- ${p.name} — ${p.status}` +
+                `${p.nextAction
+                  ? ` → ${p.nextAction}`
+                  : ""}`
+            )
+            .join("\n")
+        );
+      }
+      break;
+
+    case "/memory":
+      {
+        const sub = (args[0] ?? "").toLowerCase();
+        const rest = args.slice(1);
+
+        if (sub === "count") {
+          const stats = memoryStats();
+
+          const breakdown =
+            Object.entries(stats.byType)
+              .sort((a, b) => b[1] - a[1])
+              .map(
+                ([type, count]) =>
+                  `${type} ${count}`
+              )
+              .join(" · ") || "aucune";
+
+          addNexusMessage(
+            `Mémoire longue : ${stats.total} notes (${breakdown})`
+          );
+          break;
+        }
+
+        if (sub === "forget") {
+          const id = rest[0];
+
+          if (!id) {
+            addNexusMessage(
+              "Usage : /memory forget <id>"
+            );
+            break;
+          }
+
+          const target = getMemory(id);
+
+          if (!target) {
+            addNexusMessage(
+              `Aucune note trouvée : ${id}`
+            );
+            break;
+          }
+
+          const removed = forgetMemory(id);
+
+          addNexusMessage(
+            removed
+              ? `Note oubliée : ${target.title}`
+              : `Impossible de supprimer : ${target.title}`
+          );
+          break;
+        }
+
+        if (sub === "list") {
+          const notes = listMemories({
+            limit: 20,
+          });
+
+          if (!notes.length) {
+            addNexusMessage(
+              "Mémoire longue vide."
+            );
+            break;
+          }
+
+          addNexusMessage(
+            notes
+              .map(
+                note =>
+                  `- ${note.id} ` +
+                  `(${note.type}` +
+                  `${note.projectId
+                    ? ` · ${note.projectId}`
+                    : ""}) ` +
+                  `${note.title}`
+              )
+              .join("\n")
+          );
+          break;
+        }
+
+        if (sub === "search" || sub === "get") {
+          const id = rest.join(" ");
+
+          if (!id) {
+            addNexusMessage(
+              "Usage : /memory search <id ou mots-clés>"
+            );
+            break;
+          }
+
+          const direct = getMemory(id);
+
+          if (direct) {
+            addNexusMessage(
+              `[${direct.type}] ` +
+              `${direct.title} ` +
+              `(imp ${direct.importance})\n` +
+              `${direct.content}`
+            );
+            break;
+          }
+
+          const notes = recallMemories({
+            keywords: rest,
+            limit: 5,
+          });
+
+          if (!notes.length) {
+            addNexusMessage(
+              "Aucun souvenir trouvé."
+            );
+            break;
+          }
+
+          addNexusMessage(
+            notes
+              .map(
+                note =>
+                  `- ${note.id} ` +
+                  `(imp ${note.importance}) ` +
+                  `[${note.type}] ${truncate(
+                    note.title,
+                    80
+                  )}\n` +
+                  `    ${truncate(note.content, 120)}`
+              )
+              .join("\n\n")
+          );
+          break;
+        }
+
+        addNexusMessage(
+          [
+            "Mémoire longue",
+            "/memory search <mots-clés>   Chercher",
+            "/memory get <id>             Voir une note",
+            "/memory list                 Lire les notes",
+            "/memory forget <id>          Oublier une note",
+            "/memory count                Compter les notes",
+            "/memory relink               Reconstruire les liens↔",
+          ].join("\n")
+        );
+      }
       break;
 
     case "/model":
@@ -1510,10 +1870,16 @@ async function handleCommand(message) {
           "├─ WEATHER",
           "├─ WEB SEARCH",
           "├─ NAVIGATION",
+          "├─ PROJECTS (init/set/checkpoint/log/status/resume)",
           "├─ GMAIL",
           "├─ CALENDAR",
+          "├─ FILES (local + Drive : search/list/read)",
           "├─ HOME AUTOMATION",
           "└─ NAS",
+          "",
+          "MÉMOIRE (toutes les routes)",
+          "memory_add · memory_search · memory_list",
+          "memory_update · memory_forget",
           "",
           "MCP",
           "└─ PLAYWRIGHT",
@@ -1664,6 +2030,13 @@ async function realNexus(message, files = []) {
             setTool("—");
             setOrbMode("ERROR");
 
+            break;
+
+          case "tools_selected":
+            break;
+
+          case "usage":
+            showUsage(event.usage);
             break;
 
           case "error":
@@ -1854,6 +2227,8 @@ function shutdown() {
 // ============================================================
 
 async function startCLI() {
+  nexusState.project = getActiveProject();
+
   updateLayout();
 
   renderInput();

@@ -25,6 +25,18 @@ import {
 } from "./google/calendar.js";
 
 import {
+  memoryTools,
+} from "./memory.js";
+
+import {
+  projectTools,
+} from "./project.js";
+
+import {
+  filesTools,
+} from "./files.js";
+
+import {
   changeDeviceState,
   getDeviceId,
   getDeviceState,
@@ -49,6 +61,10 @@ export const nativeTools = [
 
   ...gmailTools,
   ...calendarTools,
+
+  ...memoryTools,
+  ...projectTools,
+  ...filesTools,
 
   changeDeviceState,
   getDeviceId,

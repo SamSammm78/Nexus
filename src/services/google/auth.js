@@ -18,7 +18,8 @@ const SCOPES = [
   "https://www.googleapis.com/auth/gmail.readonly",
   "https://www.googleapis.com/auth/gmail.modify",
   "https://www.googleapis.com/auth/gmail.compose",
-  "https://www.googleapis.com/auth/calendar"
+  "https://www.googleapis.com/auth/calendar",
+  "https://www.googleapis.com/auth/drive.readonly"
 ];
 
 // Marge de sécurité avant expiration du token (5 min)

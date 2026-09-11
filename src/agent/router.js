@@ -9,6 +9,7 @@ const VALID_ROUTES = [
   "NAVIGATION",
   "WEATHER",
   "GMAIL",
+  "FILES",
   "HOME_AUTOMATION",
   "NAS",
   "CALENDAR"
@@ -231,6 +232,28 @@ Exemples :
 - mets le NAS hors service
 
 
+FILES
+Utiliser lorsqu'une demande concerne des
+fichiers ou documents de l'utilisateur :
+fichiers locaux (Documents, cours, TD) ou
+Google Drive.
+
+Exemples :
+
+- cherche mon cours d'analyse
+- retrouve le fichier TD de maths
+- liste mes documents
+- quel est le contenu de mon dossier cours ?
+- montre-moi ce que j'ai dans le Drive
+- lis le fichier notes_projet.md
+- affiche mon dossier TD
+
+Ne PAS router vers FILES :
+- "écris-moi un texte" → DIRECT
+- un document jamais enregistré chez
+  l'utilisateur → DIRECT / WEB_SEARCH
+
+
 RÈGLES IMPORTANTES :
 
 - Préfère DIRECT si aucun outil
@@ -270,6 +293,7 @@ NATIVE
 WEATHER
 GMAIL
 CALENDAR
+FILES
 HOME_AUTOMATION
 NAS
 ou

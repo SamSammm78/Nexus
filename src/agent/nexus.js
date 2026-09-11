@@ -21,6 +21,12 @@ import {
   getHistory,
 } from "../memory/shortTerm.js";
 
+import {
+  initBrain,
+  recallMemories,
+} from "../memory/brain.js";
+import { getActiveProject } from "../memory/state.js";
+
 
 // ============================================================
 // STATE
@@ -75,6 +81,8 @@ export async function startNexus() {
   initializationPromise = (async () => {
     console.log("Initialisation de NEXUS...");
 
+    initBrain();
+
     startMapServer();
 
     mcpTools = await connectMcpServers();
@@ -113,12 +121,20 @@ export async function startNexus() {
 // ROUTE → TOOLS
 // ============================================================
 
+// Les outils mémoire sont disponibles sur toutes les routes :
+// NEXUS peut retenir une information importante quel que soit
+// le contexte (agenda ajouté au calendrier, adresse, préférence...).
+const memoryDeclarations = getNativeDeclarations()
+  .filter(
+    tool => tool.name.startsWith("memory_")
+  );
+
 function getToolsForRoute(route) {
   switch (route) {
     case "WEB_SEARCH":
       return [
         getNativeDeclaration("search_web"),
-      ].filter(Boolean);
+      ].filter(Boolean).concat(memoryDeclarations);
 
     case "NATIVE":
       return getNativeDeclarations().filter(
@@ -126,19 +142,20 @@ function getToolsForRoute(route) {
       );
 
     case "BROWSER":
-      return playwrightDeclarations;
+      return playwrightDeclarations
+        .concat(memoryDeclarations);
 
     case "NAVIGATION":
       return [
         getNativeDeclaration("get_transit_journey"),
         getNativeDeclaration("get_transit_disruptions"),
         getNativeDeclaration("get_driving_route"),
-      ].filter(Boolean);
+      ].filter(Boolean).concat(memoryDeclarations);
 
     case "WEATHER":
       return [
         getNativeDeclaration("get_weather_data"),
-      ].filter(Boolean);
+      ].filter(Boolean).concat(memoryDeclarations);
 
     case "GMAIL":
       return [
@@ -164,7 +181,7 @@ function getToolsForRoute(route) {
         getNativeDeclaration("download_attachment"),
         getNativeDeclaration("list_threads"),
         getNativeDeclaration("read_thread"),
-      ].filter(Boolean);
+      ].filter(Boolean).concat(memoryDeclarations);
 
     case "CALENDAR":
       return [
@@ -174,15 +191,15 @@ function getToolsForRoute(route) {
         getNativeDeclaration("create_calendar_event"),
         getNativeDeclaration("update_calendar_event"),
         getNativeDeclaration("delete_calendar_event"),
-      ].filter(Boolean);
+      ].filter(Boolean).concat(memoryDeclarations);
 
     case "HOME_AUTOMATION":
       return [
         getNativeDeclaration("changeDeviceState"),
         getNativeDeclaration("getDeviceId"),
         getNativeDeclaration("getDeviceState"),
-        getNativeDeclaration("setCountdown")
-      ].filter(Boolean);
+        getNativeDeclaration("setCountdown"),
+      ].filter(Boolean).concat(memoryDeclarations);
 
 
     case "NAS":
@@ -191,12 +208,19 @@ function getToolsForRoute(route) {
         getNativeDeclaration("listSharedFoldersNas"),
         getNativeDeclaration("listNasFoldersNas"),
         getNativeDeclaration("getPingNas"),
-        getNativeDeclaration("setNasStatus")
-      ].filter(Boolean)
+        getNativeDeclaration("setNasStatus"),
+      ].filter(Boolean).concat(memoryDeclarations);
+
+    case "FILES":
+      return [
+        getNativeDeclaration("file_search"),
+        getNativeDeclaration("file_list"),
+        getNativeDeclaration("file_read"),
+      ].filter(Boolean).concat(memoryDeclarations);
 
     case "DIRECT":
     default:
-      return [];
+      return memoryDeclarations;
   }
 }
 
@@ -277,6 +301,17 @@ export async function askNexus(
   try {
     const memory = getHistory();
 
+    clearUsage();
+
+    const memoryBlock = buildMemoryContext(message);
+
+    const messageParts = memoryBlock
+      ? [
+          { text: memoryBlock },
+          ...buildMessageParts(message, files),
+        ]
+      : buildMessageParts(message, files);
+
     // --------------------------------------------------------
     // ROUTING
     // --------------------------------------------------------
@@ -324,6 +359,8 @@ export async function askNexus(
     let response = await chat.sendMessage({
       message: messageParts,
     });
+
+    trackUsage(response.usageMetadata);
 
     // --------------------------------------------------------
     // AGENT LOOP
@@ -397,7 +434,18 @@ export async function askNexus(
       response = await chat.sendMessage({
         message: functionResponses,
       });
+
+      trackUsage(response.usageMetadata);
     }
+
+    // --------------------------------------------------------
+    // TOKEN USAGE
+    // --------------------------------------------------------
+
+    onEvent({
+      type: "usage",
+      usage,
+    });
 
     // --------------------------------------------------------
     // LOOP PROTECTION
@@ -459,6 +507,97 @@ export async function askNexus(
 // ============================================================
 // MEMORY
 // ============================================================
+
+let usage = {
+  promptTokenCount: 0,
+  candidatesTokenCount: 0,
+  cachedContentTokenCount: 0,
+  totalTokenCount: 0,
+};
+
+function trackUsage(metadata = {}) {
+  usage.promptTokenCount +=
+    metadata.promptTokenCount ?? 0;
+  usage.candidatesTokenCount +=
+    metadata.candidatesTokenCount ?? 0;
+  usage.cachedContentTokenCount +=
+    metadata.cachedContentTokenCount ?? 0;
+  usage.totalTokenCount =
+    usage.promptTokenCount +
+    usage.candidatesTokenCount;
+}
+
+function clearUsage() {
+  usage.promptTokenCount = 0;
+  usage.candidatesTokenCount = 0;
+  usage.cachedContentTokenCount = 0;
+  usage.totalTokenCount = 0;
+}
+
+function buildMemoryContext(message) {
+  try {
+    const activeProject = getActiveProject();
+
+    let memories = recallMemories({
+      keywords: extractKeywords(message),
+      projectId: activeProject,
+      limit: 3,
+    });
+
+    if (!memories.length && activeProject) {
+      memories = recallMemories({
+        keywords: extractKeywords(message),
+        limit: 3,
+      });
+    }
+
+    if (!memories.length) return "";
+
+    const lines = memories.map(
+      note => {
+        const project =
+          note.projectId
+            ? ` (projet ${note.projectId})`
+            : "";
+
+        return (
+          `- [${note.type}]${project} ` +
+          truncate(note.content, 160)
+        );
+      }
+    );
+
+    const header =
+      "Projet actif : " +
+      (activeProject || "—") +
+      "\nRappels mémoire :\n";
+
+    return (
+      header +
+      lines.join("\n")
+    );
+  } catch {
+    return "";
+  }
+}
+
+function extractKeywords(message) {
+  return String(message ?? "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .split(/[^a-z0-9]+/)
+    .filter(word => word.length >= 4)
+    .filter((word, index, all) => all.indexOf(word) === index)
+    .slice(0, 8);
+}
+
+function truncate(text, max) {
+  const value = String(text ?? "").trim();
+  return value.length > max
+    ? `${value.slice(0, max - 1)}…`
+    : value;
+}
 
 function saveConversation(
   userMessage,
