@@ -97,6 +97,13 @@ FILES RULES
 - TÉLÉCHARGER : file_download avec une URL (ex. un document vu
   dans le navigateur Playwright). Destination par défaut :
   'downloads'.
+- Si le fichier vient d'une page ouverte dans le navigateur (ou que
+  le site demande une session) → file_download avec browser: true
+  (vrai navigateur : cookies, JavaScript). browser: false (défaut)
+  est pour les liens directs simples.
+- file_download valide le fichier : s'il renvoie "page HTML" ou
+  "ne correspond pas au fichier attendu", RETENTE avec browser: true
+  avant de dire à l'utilisateur que le téléchargement a échoué.
 - CONFIRMATION : file_write écrase un fichier existant, et
   file_download écrase un fichier ou télécharge un fichier
   volumineux/taille inconnue → demander UNE confirmation écrite

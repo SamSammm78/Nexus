@@ -23,6 +23,10 @@ import {
   downloadUrl,
 } from "../services/files/download.js";
 
+import {
+  downloadViaBrowser,
+} from "../services/browser/download.js";
+
 
 const STRING = Type.STRING;
 const NUMBER = Type.NUMBER;
@@ -368,7 +372,7 @@ const file_downloadTool = {
   declaration: {
     name: "file_download",
     description:
-      "Télécharge un fichier depuis une URL (HTTP/HTTPS, ex. un document trouvé via le navigateur Playwright) vers l'espace de fichiers local (dossier 'downloads' par défaut). Confirmation requise si le fichier est volumineux ou si un fichier du même nom existe déjà.",
+      "Télécharge un fichier depuis une URL (HTTP/HTTPS) vers l'espace de fichiers local (dossier 'downloads' par défaut). En browser:true, télécharge via un vrai navigateur (session, cookies, JavaScript) — indispensable quand le fichier vient d'une page ouverte avec le navigateur. Le fichier est validé : si le serveur renvoie une page HTML ou un fichier corrompu, l'outil l'indique. Confirmation requise si le fichier est volumineux ou si un fichier du même nom existe déjà.",
     parameters: {
       type: Type.OBJECT,
       properties: {
@@ -376,6 +380,11 @@ const file_downloadTool = {
           type: STRING,
           description:
             "URL du fichier à télécharger.",
+        },
+        browser: {
+          type: "boolean",
+          description:
+            "true pour télécharger via un vrai navigateur (recommendé si l'utilisateur a ouvert le site dans le navigateur ou si le site demande une session). Défaut : false (HTTP direct).",
         },
         folder: {
           type: STRING,
@@ -385,7 +394,7 @@ const file_downloadTool = {
         filename: {
           type: STRING,
           description:
-            "Nom de fichier à enregistrer (défaut : dérivé de l'URL).",
+            "Nom de fichier à enregistrer (défaut : dérivé de l'URL ou du site).",
         },
         confirmed: {
           type: "boolean",
@@ -397,6 +406,15 @@ const file_downloadTool = {
   },
 
   async execute(args = {}) {
+    if (args.browser) {
+      return downloadViaBrowser({
+        url: args.url,
+        folder: args.folder,
+        filename: args.filename,
+        confirmed: args.confirmed,
+      });
+    }
+
     return downloadUrl({
       url: args.url,
       folder: args.folder,

@@ -58,15 +58,22 @@ const { searchLocalFiles, listLocalFolder, readLocalFile } = local;
 const { getFilesSettings, setFilesRoot, setFilesPriority, resolveRoot } = settings;
 const [file_searchTool, file_listTool, file_readTool, file_writeTool, file_mkdirTool, file_downloadTool] = tools.filesTools;
 
-function startTestServer(payload) {
-  const server = http.createServer((req, res) => {
-    const body = Buffer.isBuffer(payload)
-      ? payload
-      : Buffer.from(payload ?? "bonjour");
+function startTestServer(payloadOrOpts) {
+  const opts =
+    typeof payloadOrOpts === "object" &&
+    !Buffer.isBuffer(payloadOrOpts)
+      ? payloadOrOpts
+      : { payload: payloadOrOpts };
 
+  const body = Buffer.isBuffer(opts.payload)
+    ? opts.payload
+    : Buffer.from(opts.payload ?? "bonjour");
+
+  const server = http.createServer((req, res) => {
     res.writeHead(200, {
-      "content-type": "text/plain",
+      "content-type": opts.contentType ?? "text/plain",
       "content-length": String(body.length),
+      ...(opts.headers ?? {}),
     });
 
     res.end(body);
@@ -76,7 +83,7 @@ function startTestServer(payload) {
     server.listen(0, "127.0.0.1", () => {
       resolveServer({
         url:
-          `http://127.0.0.1:${server.address().port}/doc.txt`,
+          `http://127.0.0.1:${server.address().port}/doc.pdf`,
         close: () => new Promise((r) => server.close(r)),
       });
     });
@@ -322,27 +329,32 @@ test("file_mkdir : chemin manquant refusé", async () => {
 });
 
 test("file_download : télécharge une URL dans downloads/", async () => {
-  const server = await startTestServer("contenu du fichier");
+  const server = await startTestServer("%PDF-1.4\ncontenu du fichier");
 
   try {
     const result = await file_downloadTool.execute({
       url: server.url,
     });
 
-    assert.equal(result.name, "doc.txt");
+    assert.equal(result.name, "doc.pdf");
     assert.ok(result.folder.endsWith("downloads"));
-    assert.equal(result.size, "contenu du fichier".length);
+    assert.equal(result.size, "%PDF-1.4\ncontenu du fichier".length);
 
     const content = fs.readFileSync(result.path, "utf8");
 
-    assert.equal(content, "contenu du fichier");
+    assert.ok(content.startsWith("%PDF-"));
   } finally {
     await server.close();
   }
 });
 
 test("file_download : écrase un fichier existant seulement après confirmation", async () => {
-  const server = await startTestServer("version 2");
+  const server = await startTestServer("%PDF-1.4\nversion 2");
+
+  const existingDir = path.join(TMP, "Documents", "downloads");
+
+  fs.mkdirSync(existingDir, { recursive: true });
+  fs.writeFileSync(path.join(existingDir, "doc.pdf"), "ancien");
 
   try {
     await assert.rejects(
@@ -355,7 +367,55 @@ test("file_download : écrase un fichier existant seulement après confirmation"
       confirmed: true,
     });
 
-    assert.equal(fs.readFileSync(result.path, "utf8"), "version 2");
+    assert.ok(fs.readFileSync(result.path, "utf8").startsWith("%PDF-"));
+  } finally {
+    await server.close();
+  }
+});
+
+test("file_download : page HTML renvoyée → rejetée sans fichier corrompu", async () => {
+  const server = await startTestServer({
+    payload: "<html><body>page de connexion</body></html>",
+    contentType: "text/html",
+  });
+
+  try {
+    await assert.rejects(
+      () => file_downloadTool.execute({
+        url: server.url,
+        filename: "html-test.pdf",
+      }),
+      /HTML|html|browser/
+    );
+
+    assert.equal(
+      fs.existsSync(path.join(TMP, "Documents", "downloads", "html-test.pdf")),
+      false
+    );
+  } finally {
+    await server.close();
+  }
+});
+
+test("file_download : contenu non conforme → rejeté (fichier cassé)", async () => {
+  const server = await startTestServer({
+    payload: "ceci nest pas un pdf",
+    contentType: "application/pdf",
+  });
+
+  try {
+    await assert.rejects(
+      () => file_downloadTool.execute({
+        url: server.url,
+        filename: "corrupt-test.pdf",
+      }),
+      /ne correspond|HTML|browser/
+    );
+
+    assert.equal(
+      fs.existsSync(path.join(TMP, "Documents", "downloads", "corrupt-test.pdf")),
+      false
+    );
   } finally {
     await server.close();
   }
@@ -365,7 +425,12 @@ test("file_download : gros fichier exige confirmation", async () => {
   process.env.NEXUS_FILES_DOWNLOAD_BIG = "4";
   process.env.NEXUS_FILES_DOWNLOAD_MAX = "1024";
 
-  const server = await startTestServer(Buffer.alloc(64, 65));
+  const server = await startTestServer(
+    Buffer.concat([
+      Buffer.from("%PDF-1.4\n"),
+      Buffer.alloc(56, 32),
+    ])
+  );
 
   try {
     await assert.rejects(
@@ -392,4 +457,50 @@ test("file_download : protocole non autorisé refusé", async () => {
     () => file_downloadTool.execute({ url: "file:///etc/passwd" }),
     /Protocole/
   );
+});
+
+test("file_download : mode navigateur (Playwright) avec session JS", async (t) => {
+  const server = await startTestServer({
+    payload: "%PDF-1.4\nProduit par le navigateur",
+    headers: {
+      "content-disposition": 'attachment; filename="doc.pdf"',
+    },
+  });
+
+  try {
+    let result;
+
+    try {
+      result = await file_downloadTool.execute({
+        url: server.url,
+        filename: "browser-test.pdf",
+        browser: true,
+      });
+    } catch (error) {
+      if (
+        /Executable doesn't exist|browser.*not found|playwright|ENOENT/i.test(
+          String(error?.message)
+        )
+      ) {
+        t.skip(`Navigateur indisponible en test : ${error.message}`);
+        return;
+      }
+
+      throw error;
+    }
+
+    assert.equal(result.name, "browser-test.pdf");
+    assert.ok(fs.readFileSync(result.path, "utf8").startsWith("%PDF-"));
+
+    const overwrittenResult = await file_downloadTool.execute({
+      url: server.url,
+      filename: "browser-test.pdf",
+      browser: true,
+      confirmed: true,
+    });
+
+    assert.ok(fs.readFileSync(overwrittenResult.path, "utf8").startsWith("%PDF-"));
+  } finally {
+    await server.close();
+  }
 });

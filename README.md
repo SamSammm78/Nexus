@@ -470,8 +470,12 @@ src/tools/files.js               → file_search / file_list / file_read
   `/attach`). Au-delà de ~18 Mo, le fichier est signalé sans contenu.
 - `file_write` : crée/écrase un fichier texte local (écrasement = confirmation).
 - `file_mkdir` : crée des dossiers (récursif) dans la racine locale.
-- `file_download` : télécharge une URL (ex. document vu dans Playwright) vers
-  `downloads/`, confirmation pour l'écrasement ou les gros fichiers.
+- `file_download` : télécharge une URL vers `downloads/`. Mode HTTP direct
+  (`browser: false`, défaut) et mode vrai navigateur Playwright
+  (`browser: true`) pour les sessions/cookies/JS. Le fichier est **validé**
+  (magic bytes) : page HTML / fichier corrompu → refusé + proposition de
+  re-télécharger en `browser: true`. Confirmation pour l'écrasement ou les
+  gros fichiers. Navigation auto : Chromium Playwright → repli Google Chrome.
 - Drive est branché sur le même OAuth que Gmail/Calendar
   (scope supplémentaire `drive.readonly` — voir re-autorisation ci-dessous).
 - Config : `data/files-config.json` (`root`, `sourcePriority`), surchargée
