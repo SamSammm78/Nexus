@@ -415,12 +415,36 @@ const file_downloadTool = {
       });
     }
 
-    return downloadUrl({
-      url: args.url,
-      folder: args.folder,
-      filename: args.filename,
-      confirmed: args.confirmed,
-    });
+    try {
+      const result = await downloadUrl({
+        url: args.url,
+        folder: args.folder,
+        filename: args.filename,
+        confirmed: args.confirmed,
+      });
+
+      return { ...result, via: "http" };
+    } catch (error) {
+      const invalid =
+        error?.code === "INVALID_DOWNLOAD" ||
+        /HTML|html/i.test(String(error?.message));
+
+      if (
+        invalid &&
+        process.env.NEXUS_FILES_NO_BROWSER !== "1"
+      ) {
+        const result = await downloadViaBrowser({
+          url: args.url,
+          folder: args.folder,
+          filename: args.filename,
+          confirmed: args.confirmed,
+        });
+
+        return { ...result, via: "browser", retriedAfter: "http" };
+      }
+
+      throw error;
+    }
   },
 };
 

@@ -46,6 +46,10 @@ const settings = await import(
   "../services/files/settings.js"
 );
 
+const { closeDownloadBrowser } = await import(
+  "../services/browser/download.js"
+);
+
 const local = await import(
   "../services/files/local.js"
 );
@@ -379,6 +383,8 @@ test("file_download : page HTML renvoyée → rejetée sans fichier corrompu", a
     contentType: "text/html",
   });
 
+  process.env.NEXUS_FILES_NO_BROWSER = "1";
+
   try {
     await assert.rejects(
       () => file_downloadTool.execute({
@@ -393,6 +399,7 @@ test("file_download : page HTML renvoyée → rejetée sans fichier corrompu", a
       false
     );
   } finally {
+    delete process.env.NEXUS_FILES_NO_BROWSER;
     await server.close();
   }
 });
@@ -402,6 +409,8 @@ test("file_download : contenu non conforme → rejeté (fichier cassé)", async 
     payload: "ceci nest pas un pdf",
     contentType: "application/pdf",
   });
+
+  process.env.NEXUS_FILES_NO_BROWSER = "1";
 
   try {
     await assert.rejects(
@@ -417,6 +426,7 @@ test("file_download : contenu non conforme → rejeté (fichier cassé)", async 
       false
     );
   } finally {
+    delete process.env.NEXUS_FILES_NO_BROWSER;
     await server.close();
   }
 });
@@ -502,5 +512,6 @@ test("file_download : mode navigateur (Playwright) avec session JS", async (t) =
     assert.ok(fs.readFileSync(overwrittenResult.path, "utf8").startsWith("%PDF-"));
   } finally {
     await server.close();
+    await closeDownloadBrowser();
   }
 });

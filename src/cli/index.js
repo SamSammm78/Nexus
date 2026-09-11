@@ -28,6 +28,14 @@ import {
   setFilesPriority,
 } from "../services/files/settings.js";
 
+import {
+  file_downloadTool,
+} from "../tools/files.js";
+
+import {
+  closeDownloadBrowser,
+} from "../services/browser/download.js";
+
 // ============================================================
 // FILES
 // ============================================================
@@ -1563,6 +1571,46 @@ async function handleCommand(message) {
       break;
     }
 
+    case "/download": {
+      const url = args[0];
+      const folder = args[1];
+
+      if (!/^https?:\/\//i.test(url ?? "")) {
+        addNexusMessage("Usage : /download <url> [dossier (défaut: downloads)]");
+        break;
+      }
+
+      addNexusMessage(
+        `{${COLORS.muted}-fg}Téléchargement de ${url}...{/}`
+      );
+
+      try {
+        const result = await file_downloadTool.execute({
+          url,
+          folder,
+          confirmed: true,
+        });
+
+        addNexusMessage(
+          [
+            "TÉLÉCHARGEMENT TERMINÉ",
+            "",
+            `Fichier : {${COLORS.cyan}-fg}${result.name}{/}`,
+            `Taille : {${COLORS.cyan}-fg}${formatBytes(result.size)}{/}`,
+            `Dossier : {${COLORS.cyan}-fg}${result.folder}{/}`,
+            result.via === "browser"
+              ? `Mode : {${COLORS.muted}-fg}navigateur (session){/}`
+              : `Mode : {${COLORS.muted}-fg}HTTP direct{/}`,
+          ].join("\n")
+        );
+      } catch (error) {
+        addNexusMessage(
+          `Échec du téléchargement : {${COLORS.red}-fg}${error?.message ?? error}{/}`
+        );
+      }
+      break;
+    }
+
     case "/detach":
       if (args[0]?.toLowerCase() === "all") {
         pendingFiles.length = 0;
@@ -2199,10 +2247,12 @@ function wait(ms) {
 function shutdown() {
   clearInterval(orbAnimation);
 
-  screen.program.showCursor();
-  screen.destroy();
+  closeDownloadBrowser().finally(() => {
+    screen.program.showCursor();
+    screen.destroy();
 
-  process.exit(0);
+    process.exit(0);
+  });
 }
 
 

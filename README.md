@@ -470,18 +470,19 @@ src/tools/files.js               → file_search / file_list / file_read
   `/attach`). Au-delà de ~18 Mo, le fichier est signalé sans contenu.
 - `file_write` : crée/écrase un fichier texte local (écrasement = confirmation).
 - `file_mkdir` : crée des dossiers (récursif) dans la racine locale.
-- `file_download` : télécharge une URL vers `downloads/`. Mode HTTP direct
-  (`browser: false`, défaut) et mode vrai navigateur Playwright
-  (`browser: true`) pour les sessions/cookies/JS. Le fichier est **validé**
-  (magic bytes) : page HTML / fichier corrompu → refusé + proposition de
-  re-télécharger en `browser: true`. Confirmation pour l'écrasement ou les
-  gros fichiers. Navigation auto : Chromium Playwright → repli Google Chrome.
+- `file_download` : télécharge une URL vers `downloads/`. D'abord en mode
+  HTTP direct (rapide) ; si le serveur renvoie une page HTML ou un fichier
+  invalide, l'outil **retente automatiquement** via le navigateur (Google
+  Chrome réutilisé en mode « chaud », session/cookies/JS). `browser: true`
+  force le navigateur. Le fichier est validé (magic bytes) : page HTML /
+  fichier corrompu → refusé. Confirmation pour l'écrasement ou les gros
+  fichiers. CLI : `/download <url> [dossier]` pour télécharger directement.
 - Drive est branché sur le même OAuth que Gmail/Calendar
   (scope supplémentaire `drive.readonly` — voir re-autorisation ci-dessous).
 - Config : `data/files-config.json` (`root`, `sourcePriority`), surchargée
   par `NEXUS_FILES_ROOT`. Env préfixé : `NEXUS_FILES_CONFIG`.
 - CLI : `/files` (statut), `/files root <chemin>`, `/files priority <local|drive>`,
-  `/files pending` (fichiers en attente d'envoi).
+  `/files pending` (fichiers en attente d'envoi), `/download <url> [dossier]`.
 
 ### Re-autorisation Google pour le scope Drive
 

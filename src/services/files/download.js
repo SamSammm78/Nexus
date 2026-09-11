@@ -154,10 +154,14 @@ export async function downloadUrl({
     ).toLowerCase();
 
     if (contentType.startsWith("text/html")) {
-      throw new Error(
+      const error = new Error(
         "Le serveur a renvoyé une page HTML (connexion, erreur ou anti-bot) au lieu du fichier. " +
         "Essaie de retélécharger avec browser: true pour utiliser la session du navigateur."
       );
+
+      error.code = "INVALID_DOWNLOAD";
+
+      throw error;
     }
   }
 

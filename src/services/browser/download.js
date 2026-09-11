@@ -48,27 +48,63 @@ class ByteCounter extends Transform {
   }
 }
 
-async function launchBrowser() {
-  const bundled =
-    await chromium
-      .launch({ headless: true })
-      .catch((error) => null);
+// Navigateur réutilisé entre deux téléchargements : le premier
+// lancement est lent, les suivants sont quasi instantanés.
+let browserPromise = null;
 
-  if (bundled) {
-    return bundled;
+async function sharedBrowser() {
+  if (!browserPromise) {
+    browserPromise = (async () => {
+      // Google Chrome installé d'abord (rapide, déjà présent).
+      const launch = (options) =>
+        chromium.launch({
+          headless: true,
+          ...options,
+        });
+
+      const direct =
+        await launch({
+          channel: "chrome",
+        }).catch(() => null);
+
+      if (direct) {
+        return direct;
+      }
+
+      const bundled =
+        await launch({}).catch(() => null);
+
+      if (bundled) {
+        return bundled;
+      }
+
+      throw new Error(
+        "Impossible de lancer un navigateur pour le téléchargement. " +
+        "Installe Google Chrome, ou Chromium via : npx playwright install chromium"
+      );
+    })();
+
+    browserPromise.catch(() => {
+      browserPromise = null;
+    });
+  }
+
+  return browserPromise;
+}
+
+export async function closeDownloadBrowser() {
+  if (!browserPromise) {
+    return;
   }
 
   try {
-    return await chromium.launch({
-      headless: true,
-      channel: "chrome",
-    });
+    const browser = await browserPromise;
+
+    await browser.close();
   } catch {
-    throw new Error(
-      "Impossible de lancer un navigateur pour le téléchargement. " +
-      "Installe Chromium pour NEXUS : npx playwright install chromium " +
-      "(ou installe Google Chrome)."
-    );
+    // Rien à faire.
+  } finally {
+    browserPromise = null;
   }
 }
 
@@ -78,22 +114,24 @@ export async function downloadViaBrowser({
   filename,
   confirmed = false,
   headers = {},
-  timeoutMs = 45_000,
+  timeoutMs = 30_000,
 } = {}) {
   if (!url) {
     throw new Error("URL manquante.");
   }
 
-  const browser = await launchBrowser();
+  const browser = await sharedBrowser();
+
+  const context =
+    await browser.newContext({
+      ignoreHTTPSErrors: true,
+      acceptDownloads: true,
+    });
+
+  let page;
 
   try {
-    const context =
-      await browser.newContext({
-        ignoreHTTPSErrors: true,
-        acceptDownloads: true,
-      });
-
-    const page = await context.newPage();
+    page = await context.newPage();
 
     const downloadPromise =
       page.waitForEvent("download", {
@@ -102,13 +140,13 @@ export async function downloadViaBrowser({
 
     try {
       await page.goto(url, {
-        waitUntil: "domcontentloaded",
+        waitUntil: "commit",
         timeout: timeoutMs,
         referer: headers.referer,
       });
     } catch {
-      // L'URL peut déclencher un téléchargement avant la fin de
-      // la navigation ; on laisse l'événement download arriver.
+      // L'URL peut déclencher le téléchargement avant la fin de la
+      // navigation ; l'événement download arrive par ailleurs.
     }
 
     let download;
@@ -123,11 +161,6 @@ export async function downloadViaBrowser({
       );
     }
 
-    const name =
-      safeDownloadName(
-        filename || download.suggestedFilename()
-      );
-
     const failure = await download.failure();
 
     if (failure) {
@@ -135,6 +168,11 @@ export async function downloadViaBrowser({
         `Le téléchargement a échoué : ${failure}`
       );
     }
+
+    const name =
+      safeDownloadName(
+        filename || download.suggestedFilename()
+      );
 
     const dir = downloadTargetFolder(folder);
 
@@ -148,7 +186,8 @@ export async function downloadViaBrowser({
 
     const counter = new ByteCounter(hardCap());
 
-    const readStream = await download.createReadStream();
+    const readStream =
+      await download.createReadStream();
 
     try {
       await pipeline(
@@ -169,6 +208,7 @@ export async function downloadViaBrowser({
       url,
     });
   } finally {
-    await browser.close().catch(() => {});
+    await page?.close().catch(() => {});
+    await context.close().catch(() => {});
   }
 }

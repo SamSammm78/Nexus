@@ -20,6 +20,10 @@ credentials/
 memories/
 data/*.db
 
+### Nexus files runtime state
+data/files-config.json
+downloads/
+
 ### Logs
 *.log
 npm-debug.log*
