@@ -468,6 +468,10 @@ src/tools/files.js               → file_search / file_list / file_read
   Les IMAGES et PDF sont joints automatiquement au modèle pour analyse
   (via `functionResponse.parts` `inlineData`, lire les fichiers visuels sans
   `/attach`). Au-delà de ~18 Mo, le fichier est signalé sans contenu.
+- `file_write` : crée/écrase un fichier texte local (écrasement = confirmation).
+- `file_mkdir` : crée des dossiers (récursif) dans la racine locale.
+- `file_download` : télécharge une URL (ex. document vu dans Playwright) vers
+  `downloads/`, confirmation pour l'écrasement ou les gros fichiers.
 - Drive est branché sur le même OAuth que Gmail/Calendar
   (scope supplémentaire `drive.readonly` — voir re-autorisation ci-dessous).
 - Config : `data/files-config.json` (`root`, `sourcePriority`), surchargée
@@ -1158,10 +1162,11 @@ Sending → explicit confirmation
 ### Files
 
 ```text
-Local read  → root configurée seulement (~/Documents par défaut)
-Local write → explicit permission (à venir)
-Drive read  → scope drive.readonly (lecture seule)
-Delete      → confirmation
+Local read   → root configurée seulement (~/Documents par défaut)
+Local write  → root configurée, écrasement avec confirmation
+Download     → root configurée + confirmation (écrasement/gros fichier)
+Drive read   → scope drive.readonly (lecture seule)
+Delete       → confirmation
 ```
 
 ### Credentials
@@ -1229,8 +1234,10 @@ Avoid infinite retry loops.
 7. ✅ Compact CLI (command suggestions, file attach, custom input)
 8. ✅ Files V1 — accès local + Google Drive (priorité configurable)
    - file_search : recherche unifiée locale + Drive avec repli automatique
-   - file_list / file_read : navigation + lecture texte / binaire
-   - route FILES (router), disponible aussi sur NATIVE
+   - file_list / file_read : navigation + lecture texte / binaire / images+PDF
+   - file_write / file_mkdir : création fichiers + dossiers (confirmation écrasement)
+   - file_download : téléchargement d'URL (navigateur / Playwright) avec confirmation
+   - route FILES (router), disponible aussi sur NATIVE/BROWSER
    - configuration : racine locale, priorité local / drive, CLI /files
 
 À VENIR

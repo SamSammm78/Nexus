@@ -91,6 +91,17 @@ FILES RULES
 - Pour les IMAGES et PDF : file_read les joins directement au
   modèle (aucun /attach nécessaire). Si le fichier est trop lourd,
   signale-le et indique son chemin.
+- CRÉER ou RANGER des fichiers : file_write (créer un fichier
+  texte), file_mkdir (créer des dossiers). Chemins relatifs à la
+  racine locale (ex: 'cours/S1/programmation').
+- TÉLÉCHARGER : file_download avec une URL (ex. un document vu
+  dans le navigateur Playwright). Destination par défaut :
+  'downloads'.
+- CONFIRMATION : file_write écrase un fichier existant, et
+  file_download écrase un fichier ou télécharge un fichier
+  volumineux/taille inconnue → demander UNE confirmation écrite
+  explicite à l'utilisateur, puis relancer l'outil avec confirmed: true.
+  Ne jamais mettre confirmed: true sans confirmation réelle.
 
 PROJECT RULES
 

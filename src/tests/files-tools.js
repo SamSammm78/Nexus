@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import os from "node:os";
 import path from "node:path";
 import fs from "node:fs";
+import http from "node:http";
 
 const TMP = fs.mkdtempSync(
   path.join(os.tmpdir(), "nexus-files-")
@@ -55,7 +56,32 @@ const tools = await import(
 
 const { searchLocalFiles, listLocalFolder, readLocalFile } = local;
 const { getFilesSettings, setFilesRoot, setFilesPriority, resolveRoot } = settings;
-const [file_searchTool, file_listTool, file_readTool] = tools.filesTools;
+const [file_searchTool, file_listTool, file_readTool, file_writeTool, file_mkdirTool, file_downloadTool] = tools.filesTools;
+
+function startTestServer(payload) {
+  const server = http.createServer((req, res) => {
+    const body = Buffer.isBuffer(payload)
+      ? payload
+      : Buffer.from(payload ?? "bonjour");
+
+    res.writeHead(200, {
+      "content-type": "text/plain",
+      "content-length": String(body.length),
+    });
+
+    res.end(body);
+  });
+
+  return new Promise((resolveServer) => {
+    server.listen(0, "127.0.0.1", () => {
+      resolveServer({
+        url:
+          `http://127.0.0.1:${server.address().port}/doc.txt`,
+        close: () => new Promise((r) => server.close(r)),
+      });
+    });
+  });
+}
 
 test("settings : racine + priorité locale par défaut", () => {
   const { root, sourcePriority } = getFilesSettings();
@@ -223,4 +249,147 @@ test("file_read : exige path ou fileId", async () => {
 
 test("resolveRoot : racine stable", () => {
   assert.equal(resolveRoot(), path.join(TMP, "Documents"));
+});
+
+test("file_write : crée un fichier texte", async () => {
+  const result = await file_writeTool.execute({
+    path: "cours/ecrit.md",
+    content: "# Écrit par NEXUS\nok",
+  });
+
+  assert.equal(result.created, true);
+  assert.equal(result.overwritten, false);
+  assert.ok(result.path.includes("ecrit.md"));
+
+  const read = readLocalFile("cours/ecrit.md");
+
+  assert.ok(read.text.includes("Écrit par NEXUS"));
+});
+
+test("file_write : écrase un fichier existant seulement après confirmation", async () => {
+  const existing = path.join(TMP, "Documents", "cours", "ecrit.md");
+
+  assert.ok(fs.existsSync(existing));
+
+  await assert.rejects(
+    () => file_writeTool.execute({
+      path: "cours/ecrit.md",
+      content: "nouveau",
+    }),
+    /confirmation|confirme/
+  );
+
+  const result = await file_writeTool.execute({
+    path: "cours/ecrit.md",
+    content: "nouveau",
+    confirmed: true,
+  });
+
+  assert.equal(result.overwritten, true);
+  assert.ok(readLocalFile("cours/ecrit.md").text.includes("nouveau"));
+});
+
+test("file_write : chemin manquant refusé", async () => {
+  await assert.rejects(
+    () => file_writeTool.execute({ content: "x" }),
+    /Chemin/
+  );
+});
+
+test("file_mkdir : crée des dossiers récursifs", async () => {
+  const result = await file_mkdirTool.execute({
+    path: "cours/S1/programmation",
+  });
+
+  assert.equal(
+    fs.existsSync(path.join(TMP, "Documents", "cours", "S1", "programmation")),
+    true
+  );
+
+  const { path: dirPath } = result;
+
+  assert.equal(
+    dirPath,
+    path.join(TMP, "Documents", "cours", "S1", "programmation")
+  );
+});
+
+test("file_mkdir : chemin manquant refusé", async () => {
+  await assert.rejects(
+    () => file_mkdirTool.execute({}),
+    /Chemin/
+  );
+});
+
+test("file_download : télécharge une URL dans downloads/", async () => {
+  const server = await startTestServer("contenu du fichier");
+
+  try {
+    const result = await file_downloadTool.execute({
+      url: server.url,
+    });
+
+    assert.equal(result.name, "doc.txt");
+    assert.ok(result.folder.endsWith("downloads"));
+    assert.equal(result.size, "contenu du fichier".length);
+
+    const content = fs.readFileSync(result.path, "utf8");
+
+    assert.equal(content, "contenu du fichier");
+  } finally {
+    await server.close();
+  }
+});
+
+test("file_download : écrase un fichier existant seulement après confirmation", async () => {
+  const server = await startTestServer("version 2");
+
+  try {
+    await assert.rejects(
+      () => file_downloadTool.execute({ url: server.url }),
+      /confirmation|confirme/
+    );
+
+    const result = await file_downloadTool.execute({
+      url: server.url,
+      confirmed: true,
+    });
+
+    assert.equal(fs.readFileSync(result.path, "utf8"), "version 2");
+  } finally {
+    await server.close();
+  }
+});
+
+test("file_download : gros fichier exige confirmation", async () => {
+  process.env.NEXUS_FILES_DOWNLOAD_BIG = "4";
+  process.env.NEXUS_FILES_DOWNLOAD_MAX = "1024";
+
+  const server = await startTestServer(Buffer.alloc(64, 65));
+
+  try {
+    await assert.rejects(
+      () => file_downloadTool.execute({ url: server.url }),
+      /confirmation|confirme/
+    );
+
+    const result = await file_downloadTool.execute({
+      url: server.url,
+      confirmed: true,
+    });
+
+    assert.ok(result.size >= 64);
+  } finally {
+    await server.close();
+
+    delete process.env.NEXUS_FILES_DOWNLOAD_BIG;
+    delete process.env.NEXUS_FILES_DOWNLOAD_MAX;
+  }
+});
+
+test("file_download : protocole non autorisé refusé", async () => {
+  await assert.rejects(
+    () => file_downloadTool.execute({ url: "file:///etc/passwd" }),
+    /Protocole/
+  );
 });

@@ -1,11 +1,14 @@
 import {
   existsSync,
   lstatSync,
+  mkdirSync,
   readFileSync,
   readdirSync,
   statSync,
+  writeFileSync,
 } from "node:fs";
 import {
+  dirname,
   isAbsolute,
   join,
   relative,
@@ -273,5 +276,49 @@ export function readLocalFile(path, {
     size: stats.size,
     truncated: buffer.length > maxChars,
     text,
+  };
+}
+
+export function resolveLocalPath(targetPath) {
+  return isAbsolute(targetPath)
+    ? resolve(targetPath)
+    : resolve(join(resolveRoot(), targetPath));
+}
+
+export function localFileExists(targetPath) {
+  return existsSync(resolveLocalPath(targetPath));
+}
+
+export function createLocalFolder(targetPath) {
+  const fullPath = resolveLocalPath(targetPath);
+
+  mkdirSync(fullPath, { recursive: true });
+
+  return {
+    path: fullPath,
+    created: true,
+  };
+}
+
+export function writeLocalFile(targetPath, content) {
+  const fullPath = resolveLocalPath(targetPath);
+
+  const existed = existsSync(fullPath);
+
+  if (existed && lstatSync(fullPath).isDirectory()) {
+    throw new Error(
+      `${fullPath} est un dossier, pas un fichier.`
+    );
+  }
+
+  mkdirSync(dirname(fullPath), { recursive: true });
+
+  writeFileSync(fullPath, content, "utf8");
+
+  return {
+    path: fullPath,
+    size: statSync(fullPath).size,
+    created: !existed,
+    overwritten: existed,
   };
 }

@@ -89,6 +89,9 @@ Exemples :
 - clique sur ce bouton
 - remplis ce formulaire
 - connecte-toi à ce site
+- télécharge ce document depuis ce site
+  (file_download : récupère l'URL de téléchargement
+  puis enregistre le fichier localement)
 
 
 NATIVE
@@ -247,6 +250,8 @@ Exemples :
 - montre-moi ce que j'ai dans le Drive
 - lis le fichier notes_projet.md
 - affiche mon dossier TD
+- crée un dossier 'cours/S1/programmation'
+- écris le fichier cours/S1/notes.md
 
 Ne PAS router vers FILES :
 - "écris-moi un texte" → DIRECT

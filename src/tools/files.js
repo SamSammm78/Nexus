@@ -4,6 +4,9 @@ import {
   searchLocalFiles,
   listLocalFolder,
   readLocalFile,
+  writeLocalFile,
+  createLocalFolder,
+  localFileExists,
 } from "../services/files/local.js";
 
 import {
@@ -15,6 +18,10 @@ import {
 import {
   getFilesSettings,
 } from "../services/files/settings.js";
+
+import {
+  downloadUrl,
+} from "../services/files/download.js";
 
 
 const STRING = Type.STRING;
@@ -283,8 +290,128 @@ const file_readTool = {
 };
 
 
+const file_writeTool = {
+  declaration: {
+    name: "file_write",
+    description:
+      "Crée ou écrase un fichier texte dans l'espace de fichiers local (Documents...). L'écrasement d'un fichier existant nécessite une confirmation explicite (confirmed: true).",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        path: {
+          type: STRING,
+          description:
+            "Chemin du fichier (relatif à la racine ou absolu), ex: 'TD/math/correction.md'.",
+        },
+        content: {
+          type: STRING,
+          description:
+            "Contenu texte à écrire dans le fichier.",
+        },
+        confirmed: {
+          type: "boolean",
+          description:
+            "À passer à true uniquement si l'utilisateur a explicitement confirmé l'écrasement d'un fichier existant.",
+        },
+      },
+    },
+  },
+
+  async execute(args = {}) {
+    if (!args.path) {
+      throw new Error("Chemin du fichier manquant.");
+    }
+
+    if (typeof args.content !== "string") {
+      throw new Error("Contenu manquant.");
+    }
+
+    if (localFileExists(args.path) && args.confirmed !== true) {
+      throw new Error(
+        "Le fichier existe déjà : demande confirmation explicite à l'utilisateur puis relance avec confirmed: true pour l'écraser."
+      );
+    }
+
+    return writeLocalFile(args.path, args.content);
+  },
+};
+
+
+const file_mkdirTool = {
+  declaration: {
+    name: "file_mkdir",
+    description:
+      "Crée un ou plusieurs dossiers (récursif) dans l'espace de fichiers local (Documents, cours, TD...).",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        path: {
+          type: STRING,
+          description:
+            "Chemin du dossier à créer (relatif à la racine ou absolu), ex: 'cours/S1/programmation'.",
+        },
+      },
+    },
+  },
+
+  async execute(args = {}) {
+    if (!args.path) {
+      throw new Error("Chemin du dossier manquant.");
+    }
+
+    return createLocalFolder(args.path);
+  },
+};
+
+
+const file_downloadTool = {
+  declaration: {
+    name: "file_download",
+    description:
+      "Télécharge un fichier depuis une URL (HTTP/HTTPS, ex. un document trouvé via le navigateur Playwright) vers l'espace de fichiers local (dossier 'downloads' par défaut). Confirmation requise si le fichier est volumineux ou si un fichier du même nom existe déjà.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        url: {
+          type: STRING,
+          description:
+            "URL du fichier à télécharger.",
+        },
+        folder: {
+          type: STRING,
+          description:
+            "Dossier de destination (relatif à la racine ou absolu). Défaut : 'downloads'.",
+        },
+        filename: {
+          type: STRING,
+          description:
+            "Nom de fichier à enregistrer (défaut : dérivé de l'URL).",
+        },
+        confirmed: {
+          type: "boolean",
+          description:
+            "À passer à true uniquement si l'utilisateur a explicitement confirmé (écrasement d'un fichier existant ou téléchargement volumineux).",
+        },
+      },
+    },
+  },
+
+  async execute(args = {}) {
+    return downloadUrl({
+      url: args.url,
+      folder: args.folder,
+      filename: args.filename,
+      confirmed: args.confirmed,
+    });
+  },
+};
+
+
 export const filesTools = [
   file_searchTool,
   file_listTool,
   file_readTool,
+  file_writeTool,
+  file_mkdirTool,
+  file_downloadTool,
 ];
