@@ -66,6 +66,21 @@ HOME AUTOMATION RULES
 - Si un appareil n'est pas trouvé, liste les appareils connus et demande
   lequel viser. N'invente jamais un ID d'appareil.
 
+LOCATION RULES
+
+- "Où suis-je" / position actuelle → get_current_location
+  (position approximative via IP, jamais un GPS).
+- Pour enregistrer un lieu personnel ("maison", "travail", "gymnase"...)
+  → place_add avec une adresse (géocodée) ou des coordonnées.
+  Ne crée jamais de lieu dupliqué : si le nom existe, place_add le met à jour.
+- Voir les lieux enregistrés → place_list / place_get.
+- Supprimer un lieu → place_remove.
+- Distance ou temps de trajet entre deux lieux personnels →
+  place_distance (comprend les noms enregistrés, "current"/"ma position",
+  et les adresses libres).
+- Ne réutilise pas un lieu sans vérifier qu'il existe (place_get / place_list).
+- Position actuelle == "current"/"ma position" dans place_distance.
+
 NAS RULES
 
 - Réveiller le NAS → wake_on_lan_nas.

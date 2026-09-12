@@ -28,6 +28,14 @@ import {
   setFilesPriority,
   setFilesDownloadDir,
 } from "../services/files/settings.js";
+import {
+  listPlaces,
+  savePlace,
+  removePlace,
+} from "../services/location/store.js";
+import {
+  geocode,
+} from "../services/location/geo.js";
 
 // ============================================================
 // FILES
@@ -515,6 +523,7 @@ const COMMANDS = [
   { name: "/project", desc: "Projet actif (état / initialise)" },
   { name: "/projects", desc: "Liste des projets" },
   { name: "/memory",  desc: "Mémoire longue (search/get/list/forget/count)" },
+  { name: "/places",  desc: "Lieux personnels (list/add/remove)" },
   { name: "/model",   desc: "Changer de modèle (nom)" },
   { name: "/tools",   desc: "Outils disponibles" },
   { name: "/clear",   desc: "Effacer la conversation" },
@@ -1407,26 +1416,27 @@ async function handleCommand(message) {
 
   switch (command) {
     case "/help":
-      addNexusMessage(
-        [
-          "COMMANDES",
-          "",
-          "/help     Afficher les commandes",
-          "/status   État de NEXUS",
-          "/project  Projet actif (état)",
-          "/projects Liste des projets",
-          "/memory   Mémoire longue",
-          "/model    Modèle actif",
-          "/tools    Outils disponibles",
-          "/attach   Ajouter des fichiers",
-          "          (ex: /attach doc.pdf img.png)",
-          "/files    Fichiers : statut, root, priority, downloaddir, pending",
-          "/detach   Retirer un fichier (index ou nom)",
-          "/detach all   Tout retirer",
-          "/clear    Effacer la conversation",
-          "/exit     Quitter NEXUS",
-        ].join("\n")
-      );
+addNexusMessage(
+          [
+            "COMMANDES",
+            "",
+            "/help     Afficher les commandes",
+            "/status   État de NEXUS",
+            "/project  Projet actif (état)",
+            "/projects Liste des projets",
+            "/memory   Mémoire longue",
+            "/places   Lieux personnels : list / add / remove",
+            "/model    Modèle actif",
+            "/tools    Outils disponibles",
+            "/attach   Ajouter des fichiers",
+            "          (ex: /attach doc.pdf img.png)",
+            "/files    Fichiers : statut, root, priority, downloaddir, pending",
+            "/detach   Retirer un fichier (index ou nom)",
+            "/detach all   Tout retirer",
+            "/clear    Effacer la conversation",
+            "/exit     Quitter NEXUS",
+          ].join("\n")
+        );
       break;
 
     case "/status":
@@ -1861,6 +1871,96 @@ async function handleCommand(message) {
       }
       break;
 
+    case "/places":
+      {
+        const sub = (args[0] ?? "").toLowerCase();
+        const rest = args.slice(1);
+
+        if (sub === "add") {
+          const name = rest[0];
+          const address = rest.slice(1).join(" ");
+
+          if (!name || !address) {
+            addNexusMessage(
+              "Usage : /places add <nom> <adresse>"
+            );
+            break;
+          }
+
+          try {
+            const resolved = await geocode(address);
+
+            savePlace({
+              name,
+              label: resolved.label,
+              latitude: resolved.latitude,
+              longitude: resolved.longitude,
+              address,
+            });
+
+            const updated =
+              listPlaces().some(
+                (p) =>
+                  p.name.toLowerCase() ===
+                  name.toLowerCase()
+              );
+
+            addNexusMessage(
+              `Lieu « ${name} » ${updated ? "mis à jour" : "ajouté"} : ` +
+              `{${COLORS.cyan}-fg}${resolved.label}{/}`
+            );
+          } catch (error) {
+            addNexusMessage(
+              `{${COLORS.error}-fg}Erreur : ${error.message}{/}`
+            );
+          }
+          break;
+        }
+
+        if (sub === "remove") {
+          const name = rest.join(" ");
+
+          if (!name) {
+            addNexusMessage(
+              "Usage : /places remove <nom>"
+            );
+            break;
+          }
+
+          const removed = removePlace(name);
+
+          addNexusMessage(
+            removed
+              ? `Lieu « ${name} » supprimé.`
+              : `{${COLORS.error}-fg}Aucun lieu « ${name} ».{/}`
+          );
+          break;
+        }
+
+        const places = listPlaces();
+
+        if (!places.length) {
+          addNexusMessage(
+            "Aucun lieu enregistré. Utilise /places add <nom> <adresse>."
+          );
+          break;
+        }
+
+        addNexusMessage(
+          [
+            `LIEUX (${places.length})`,
+            "",
+            ...places.map(
+              (place) =>
+                `- {${COLORS.cyan}-fg}${place.name}{/}` +
+                ` — ${place.label}` +
+                ` ({${COLORS.muted}-fg}${place.latitude.toFixed(4)}, ${place.longitude.toFixed(4)}{/})`
+            ),
+          ].join("\n")
+        );
+      }
+      break;
+
     case "/model":
       if (args.length) {
         nexusState.responseModel = args.join(" ");
@@ -1889,6 +1989,7 @@ async function handleCommand(message) {
           "├─ GMAIL",
           "├─ CALENDAR",
           "├─ FILES (local + Drive : search/list/read/write/mkdir/move/copy)",
+          "├─ LOCATION (position + lieux personnels : add/list/get/remove/distance)",
           "├─ HOME AUTOMATION",
           "└─ NAS",
           "",

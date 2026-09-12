@@ -45,6 +45,10 @@ import {
 } from "./pdf.js";
 
 import {
+  locationTools,
+} from "./location.js";
+
+import {
   changeDeviceState,
   getDeviceId,
   getDeviceState,
@@ -76,6 +80,8 @@ export const nativeTools = [
 
   ...downloadTools,
   ...pdfTools,
+
+  ...locationTools,
 
   changeDeviceState,
   getDeviceId,

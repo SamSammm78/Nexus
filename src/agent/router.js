@@ -12,6 +12,7 @@ const VALID_ROUTES = [
   "FILES",
   "HOME_AUTOMATION",
   "NAS",
+  "LOCATION",
   "CALENDAR"
 ];
 
@@ -256,6 +257,46 @@ Ne PAS router vers FILES :
   l'utilisateur → DIRECT / WEB_SEARCH
 
 
+LOCATION
+
+Utiliser lorsque la demande concerne :
+
+- la position actuelle de l'utilisateur
+  ("où suis-je", "quelle est ma position").
+- ses lieux personnels enregistrés
+  ("maison", "travail", "gymnase").
+  → place_add / place_list / place_get /
+    place_remove
+- une distance ou un temps de trajet entre
+  deux lieux personnels ("combien de temps
+  de la maison au travail")
+  → place_distance
+
+Exemples :
+
+- où suis-je actuellement ?
+→ LOCATION
+
+- où est ma maison ?
+→ LOCATION
+
+- ajoute le gymnase à mes lieux
+→ LOCATION
+
+- quel est le trajet de la maison au travail ?
+→ LOCATION
+
+- combien de temps de chez moi au gymnase ?
+→ LOCATION
+
+Ne PAS router vers LOCATION :
+- une météo précise sur un lieu → WEATHER
+- un itinéraire à partir d'une adresse travaillée
+  en texte ("de Paris à Lyon") → NAVIGATION.
+  place_distance est réservé aux LIEUX PERSONNELS
+  enregistrés et à la position actuelle.
+
+
 RÈGLES IMPORTANTES :
 
 - Préfère DIRECT si aucun outil
@@ -298,6 +339,7 @@ CALENDAR
 FILES
 HOME_AUTOMATION
 NAS
+LOCATION
 ou
 NAVIGATION
 

@@ -229,6 +229,16 @@ function getToolsForRoute(route) {
         getNativeDeclaration("file_copy"),
       ].filter(Boolean).concat(memoryDeclarations);
 
+    case "LOCATION":
+      return [
+        getNativeDeclaration("get_current_location"),
+        getNativeDeclaration("place_add"),
+        getNativeDeclaration("place_list"),
+        getNativeDeclaration("place_get"),
+        getNativeDeclaration("place_remove"),
+        getNativeDeclaration("place_distance"),
+      ].filter(Boolean).concat(memoryDeclarations);
+
     case "DIRECT":
     default:
       return memoryDeclarations;

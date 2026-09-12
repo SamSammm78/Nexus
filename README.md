@@ -460,6 +460,7 @@ src/services/google/drive.js     → recherche / list / lecture Google Drive
 src/tools/files.js               → file_search / file_list / file_read / file_write / file_mkdir / file_move / file_copy
 src/tools/download.js            → download_file
 src/tools/pdf.js                 → browser_download_pdf
+src/tools/location.js            → locationTools (position + lieux)
 ```
 
 - `file_search` : recherche par nom, source `auto` = source prioritaire
@@ -1274,16 +1275,20 @@ Avoid infinite retry loops.
    - file_move / file_copy : déplacer / copier fichiers et dossiers (confirmation écrasement)
    - download_file : téléchargement web → ~/Downloads/NEXUS (via navigateur Playwright, ref/selector/text, anti-écrasement)
    - browser_download_pdf : PDF ouvert dans le navigateur → ~/Downloads/NEXUS (URL directe, iframe/embed, blob:, session cookies conservée)
-   - route FILES (router), disponible aussi sur NATIVE/BROWSER
-   - configuration : racine locale, priorité local / drive, CLI /files
+9. ✅ Location and personal places
+   - get_current_location : position actuelle approximative (IP) + géocodage inverse
+   - place_add / place_list / place_get / place_remove : lieux personnels (data/places.json)
+   - place_distance : distance + temps de trajet voiture entre lieux
+     (noms enregistrés, « ma position », adresses libres — OpenRouteService, repli haversine)
+   - route LOCATION (router), outils aussi natifs (NATIVE)
+   - CLI /places
 
 À VENIR
 
-9. Google Tasks
-10. Voice Overlay (reactive orb • STT • TTS • ambient UI)
-11. Context Copilot
-12. Deep VS Code integration
-13. Location and personal places
+10. Google Tasks
+11. Voice Overlay (reactive orb • STT • TTS • ambient UI)
+12. Context Copilot
+13. Deep VS Code integration
 14. Intelligent error handling
 15. Persistent NEXUS Core service
 16. Full Workspace / HUD
