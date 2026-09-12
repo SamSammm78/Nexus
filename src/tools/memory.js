@@ -11,6 +11,7 @@ import {
   semanticGraph,
   semanticDedupeList,
   semanticConsolidate,
+  agingSweep,
 } from "../memory/brain.js";
 
 
@@ -289,6 +290,42 @@ export const memory_dedupeTool = {
 };
 
 
+export const memory_archiveTool = {
+  declaration: {
+    name: "memory_archive",
+    description:
+      "Vieillissement de la mémoire : liste les notes anciennes à faible importance (dryRun=true, défaut) ou les archive hors du périmètre de rappel (dryRun=false). Les projets et lieux personnels ne sont jamais archivés.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        dryRun: {
+          type: BOOLEAN,
+          description:
+            "true (défaut) : liste les candidates sans rien modifier. false : archive toutes les candidates.",
+        },
+        olderThanDays: {
+          type: NUMBER,
+          description:
+            "Âge minimum en jours (défaut 90).",
+        },
+        maxImportance: {
+          type: NUMBER,
+          description:
+            "Importance maximale des notes candidates (défaut 0.4).",
+        },
+      },
+    },
+  },
+
+  execute: async (args = {}) =>
+    agingSweep({
+      dryRun: args.dryRun !== false,
+      olderThanDays: args.olderThanDays ?? 90,
+      maxImportance: args.maxImportance ?? 0.4,
+    }),
+};
+
+
 export const memory_similarTool = {
   declaration: {
     name: "memory_similar",
@@ -351,4 +388,5 @@ export const memoryTools = [
   memory_forgetTool,
   memory_dedupeTool,
   memory_similarTool,
+  memory_archiveTool,
 ];

@@ -163,6 +163,9 @@ MEMORY RULES
 - memory_similar (id) : voisins sémantiques d'une note (graphe de mémoire).
 - memory_dedupe : liste les notes quasi identiques ; dryRun=false les consolide
   (fusion dans la note la plus riche + suppression des doublons).
+- memory_archive : vieillissement — liste les notes âgées à faible importance
+  (dryRun=true) ou les archive hors du rappel (dryRun=false). Projets et
+  lieux personnels jamais archivés.
 - Types disponibles : fact, decision, preference, event, note, project,
   checkpoint, place.
 - importance : 0.0 (anecdotique) à 1.0 (critique).

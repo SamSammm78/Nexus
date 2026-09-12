@@ -5,6 +5,7 @@ import {
   unlinkSync,
   statSync,
   mkdirSync,
+  renameSync,
 } from "node:fs";
 
 import {
@@ -52,6 +53,7 @@ const STOP_WORDS = new Set([
 ]);
 
 const PROJECTS_FOLDER = "projets";
+const ARCHIVES_FOLDER = "archives";
 
 
 export function getNoteDir() {
@@ -246,6 +248,61 @@ export function listNoteFiles({
 }
 
 
+export function getArchivesDir() {
+  return join(getNoteDir(), ARCHIVES_FOLDER);
+}
+
+
+export function listArchivedNoteFiles({
+  max = 500,
+} = {}) {
+  const files = collectMarkdownFiles(
+    getArchivesDir(),
+    max
+  );
+
+  files.sort(
+    (a, b) =>
+      basename(b).localeCompare(basename(a))
+  );
+
+  return files;
+}
+
+
+export function archiveNote(file) {
+  const dir = getArchivesDir();
+
+  try {
+    mkdirSync(dir, { recursive: true });
+
+    const destination = join(dir, basename(file));
+
+    renameSync(file, destination);
+
+    return destination;
+  } catch {
+    return null;
+  }
+}
+
+
+export function unarchiveNote(file) {
+  try {
+    const destination = join(
+      getNoteDir(),
+      basename(file)
+    );
+
+    renameSync(file, destination);
+
+    return destination;
+  } catch {
+    return null;
+  }
+}
+
+
 export function deriveTitle(content) {
   const cleaned = String(content ?? "")
     .replace(/^["'«»\s-]+|["'«»\s-]+$/g, "")
@@ -307,6 +364,8 @@ function collectMarkdownFiles(dir, max) {
     const full = join(dir, entry.name);
 
     if (entry.isDirectory()) {
+      if (entry.name === ARCHIVES_FOLDER) continue;
+
       files.push(...collectMarkdownFiles(full, max));
     } else if (
       entry.isFile() &&

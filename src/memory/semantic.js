@@ -7,6 +7,16 @@
 // ============================================================
 
 import {
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
+
+import {
+  join,
+} from "node:path";
+
+import {
+  getNoteDir,
   listNoteFiles,
   readNote,
   writeNote,
@@ -17,12 +27,15 @@ import {
   embedText,
   cosineSimilarity,
   tokenize,
+  EMBED_DIM,
 } from "./embed.js";
 
 
 const DEFAULT_LIMIT = 300;
 const DEFAULT_DUPLICATE_THRESHOLD = 0.9;
 const DEFAULT_NEIGHBOR_THRESHOLD = 0.4;
+const REDUNDANT_DUPLICATE_THRESHOLD = 0.95;
+const INDEX_FILENAME = ".memory-index.json";
 
 let indexCache = null;
 let indexBuilding = null;
@@ -31,6 +44,80 @@ let indexBuilding = null;
 export function invalidateSemanticIndex() {
   indexCache = null;
   indexBuilding = null;
+}
+
+
+function shouldUsePersistentIndex() {
+  const mode =
+    (process.env.NEXUS_EMBED_MODE ?? "auto")
+      .trim()
+      .toLowerCase();
+
+  return (
+    mode !== "local" ||
+    process.env.NEXUS_EMBED_INDEX === "1"
+  );
+}
+
+
+function indexFilePath() {
+  return join(getNoteDir(), INDEX_FILENAME);
+}
+
+
+function loadPersistedIndex() {
+  try {
+    const raw = readFileSync(indexFilePath(), "utf8");
+    const data = JSON.parse(raw);
+
+    if (!Array.isArray(data?.entries)) {
+      return new Map();
+    }
+
+    const entries = new Map();
+
+    for (const entry of data.entries) {
+      if (
+        !entry.id ||
+        !Array.isArray(entry.vector) ||
+        entry.vector.length !== EMBED_DIM
+      ) {
+        continue;
+      }
+
+      entries.set(entry.id, {
+        updated: entry.updated,
+        vector: Float32Array.from(entry.vector),
+      });
+    }
+
+    return entries;
+  } catch {
+    return new Map();
+  }
+}
+
+
+function savePersistedIndex(entries) {
+  try {
+    const payload = {
+      version: 1,
+      savedAt: new Date().toISOString(),
+      entries: entries.map(entry => ({
+        id: entry.note.id,
+        updated: entry.note.updated,
+        vector: Array.from(entry.vector),
+      })),
+    };
+
+    writeFileSync(
+      indexFilePath(),
+      JSON.stringify(payload),
+      "utf8"
+    );
+  } catch {
+    // Un index qui ne se sauvegarde pas ne doit jamais bloquer.
+  }
 }
 
 
@@ -50,17 +137,39 @@ async function buildIndex() {
     max: DEFAULT_LIMIT,
   });
 
+  const usePersisted = shouldUsePersistentIndex();
+  const persisted = usePersisted
+    ? loadPersistedIndex()
+    : new Map();
+
   const entries = [];
+
+  let computed = 0;
 
   for (const file of files) {
     const note = readNote(file);
 
     if (!note) continue;
 
-    entries.push({
-      note,
-      vector: await embedText(haystackOf(note)),
-    });
+    const previous = persisted.get(note.id);
+
+    let vector = null;
+
+    if (
+      previous &&
+      previous.updated === note.updated
+    ) {
+      vector = Float32Array.from(previous.vector);
+    } else {
+      vector = await embedText(haystackOf(note));
+      computed += 1;
+    }
+
+    entries.push({ note, vector });
+  }
+
+  if (usePersisted && computed > 0) {
+    savePersistedIndex(entries);
   }
 
   return entries;
@@ -390,6 +499,7 @@ export async function consolidateDuplicates({
     groups: groups.length,
     merged: 0,
     removed: 0,
+    redundant: 0,
   };
 
   for (const group of groups) {
@@ -398,9 +508,29 @@ export async function consolidateDuplicates({
     const keeper = group.keeper;
     const duplicates = group.duplicates;
 
-    const mergedContent = [
-      keeper.content,
-      ...duplicates.map(duplicate =>
+    const keeperContentVector = await embedText(
+      keeper.content ?? ""
+    );
+
+    const contentAdditions = [];
+
+    for (const duplicate of duplicates) {
+      const duplicateVector = await embedText(
+        duplicate.content ?? ""
+      );
+
+      // Contenu déjà couvert par le keeper → on ne le réécrit pas.
+      if (
+        cosineSimilarity(
+          keeperContentVector,
+          duplicateVector
+        ) >= REDUNDANT_DUPLICATE_THRESHOLD
+      ) {
+        summary.redundant += 1;
+        continue;
+      }
+
+      contentAdditions.push(
         [
           "",
           "---",
@@ -409,7 +539,12 @@ export async function consolidateDuplicates({
           "",
           duplicate.content,
         ].join("\n")
-      ),
+      );
+    }
+
+    const mergedContent = [
+      keeper.content,
+      ...contentAdditions,
     ].join("\n");
 
     const mergedRelations = Array.from(

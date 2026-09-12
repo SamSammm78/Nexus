@@ -764,7 +764,7 @@ CLI :
 /projects          Liste de tous les projets
 ```
 
-### Memory Brain V2 — V2a : embeddings & moteur sémantique ✅ (en cours)
+### Memory Brain V2 — V2a+V2b : embeddings, sémantique, aging ✅ (en cours)
 
 Le cerveau apprend à **chercher par le sens**, pas seulement par mots-clés.
 
@@ -790,12 +790,28 @@ Le cerveau apprend à **chercher par le sens**, pas seulement par mots-clés.
   - `memory_search` : paramètre `query` (phrase naturelle) → recherche
     sémantique ; `keywords` → recherche lexicale (comportement V1 intact) ;
   - `memory_dedupe` : liste les doublons, `dryRun=false` les consolide ;
-  - `memory_similar` : voisins sémantiques d'une note (graphe).
+  - `memory_similar` : voisins sémantiques d'une note (graphe) ;
+  - `memory_archive` : vieillissement — liste les notes âgées à faible
+    importance (`dryRun=true`) ou les archive (`dryRun=false`).
 - La V1 (mots-clés, synonymes, rappel automatique) reste pleinement
   opérationnelle et hybride avec la V2.
 
-À venir dans la V2 (caps suivants) : consolidation pilotée modèle,
-aging/archivage automatique, index persistant, vrai graphe exploitable.
+### V2b : aging/archivage + index persistant + fusion fine
+
+- **`agingSweep` + `memory_archive`** : archive hors du périmètre de rappel
+  les notes plus vieilles que `olderThanDays` (90) avec une importance ≤
+  `maxImportance` (0.4). Projets et lieux personnels jamais archivés.
+  Dossier `memories/archives/`, exclu des scans (recall/count/stats) ;
+  `unarchiveMemory` restaure une note dans le vault.
+- **Index vectoriel persistant** : les embeddings sont sauvegardés dans
+  `.memory-index.json` (vault) quand Ollama est utilisé (`NEXUS_EMBED_MODE`
+  ≠ local) ou via `NEXUS_EMBED_INDEX=1` ; les notes inchangées sont
+  réutilisées sans recalcul au démarrage.
+- **Fusion anti-bruit** : lors de la consolidation, un contenu déjà couvert
+  par le keeper (cosinus ≥ 0.95) n'est plus réécrit (`redundant`).
+
+À venir dans la V2 : consolidation pilotée modèle, aging/archivage
+automatique planifié, vrai graphe exploitable (Obsidian Graph).
 
 ---
 
@@ -1308,12 +1324,14 @@ Avoid infinite retry loops.
 
 À VENIR
 
-18. 🚧 Memory Brain V2 (PRIORITÉ 1 — V2a livrée, on continue)
+18. 🚧 Memory Brain V2 (PRIORITÉ 1 — V2a+V2b livrées, on continue)
    - ✅ embeddings hybrides (Ollama local | hashing déterministe)
    - ✅ recherche sémantique par le sens (memory_search query)
    - ✅ dédoublonnage + consolidation (memory_dedupe)
    - ✅ graphe de mémoire (memory_similar / semanticRelink)
-   - 🚧 aging & archivage automatique, consolidation pilotée modèle
+   - ✅ aging & archivage automatique (memory_archive, memories/archives/)
+   - ✅ index vectoriel persistant (.memory-index.json)
+   - 🚧 consolidation pilotée modèle, archivage planifié
 10. Google Tasks
 11. Voice Overlay (reactive orb • STT • TTS • ambient UI)
 12. Context Copilot

@@ -16,6 +16,9 @@ import {
   deleteNote,
   findNoteFile,
   listNoteFiles,
+  archiveNote,
+  unarchiveNote,
+  listArchivedNoteFiles,
 } from "./notes.js";
 
 import {
@@ -1080,4 +1083,163 @@ export async function semanticRelink({
   initBrain();
 
   return semanticRelinkMemories({ limit, threshold });
+}
+
+
+// ============================================================
+// V2 ARCHIVAGE & AGING (notes hors du périmètre de rappel)
+// ============================================================
+
+export function archiveMemory(id) {
+  const file = findNoteFile(id);
+
+  if (!file) return null;
+
+  const note = readNote(file);
+
+  if (!note) return null;
+
+  const destination = archiveNote(file);
+
+  if (!destination) return null;
+
+  invalidateSemanticIndex();
+
+  return {
+    id: note.id,
+    title: note.title,
+    type: note.type,
+    archived: true,
+    file: destination,
+  };
+}
+
+
+export function unarchiveMemory(id) {
+  const files = listArchivedNoteFiles({
+    max: 5000,
+  });
+
+  const file = files.find(candidate => {
+    const note = readNote(candidate);
+    return note && note.id === id;
+  });
+
+  if (!file) return null;
+
+  const destination = unarchiveNote(file);
+
+  if (!destination) return null;
+
+  invalidateSemanticIndex();
+
+  return {
+    id,
+    restored: true,
+    file: destination,
+  };
+}
+
+
+export function listArchivedMemories({
+  limit = 50,
+} = {}) {
+  initBrain();
+
+  const notes = [];
+
+  for (const file of listArchivedNoteFiles({
+    max: 5000,
+  })) {
+    const note = readNote(file);
+
+    if (!note) continue;
+
+    notes.push(note);
+  }
+
+  notes.sort(
+    (a, b) =>
+      (b.updated ?? "").localeCompare(a.updated ?? "")
+  );
+
+  return notes.slice(0, limit);
+}
+
+
+// Vieillissement : documente les notes trop anciennes, à faible
+// importance, et (si demandé) les archive hors du périmètre de rappel.
+export function agingSweep({
+  olderThanDays = 90,
+  maxImportance = 0.4,
+  dryRun = true,
+} = {}) {
+  initBrain();
+
+  const cutoff =
+    Date.now() -
+    olderThanDays * 86_400_000;
+
+  const candidates = [];
+
+  for (const file of listNoteFiles({
+    max: DEFAULT_SCAN_LIMIT,
+  })) {
+    const note = readNote(file);
+
+    if (!note) continue;
+
+    if (
+      note.type === "project" ||
+      note.type === "place"
+    ) {
+      continue;
+    }
+
+    if ((note.importance ?? 0.5) > maxImportance) {
+      continue;
+    }
+
+    const timestamp = Date.parse(
+      note.updated ?? note.created ?? ""
+    );
+
+    if (
+      !Number.isFinite(timestamp) ||
+      timestamp > cutoff
+    ) {
+      continue;
+    }
+
+    candidates.push({
+      id: note.id,
+      title: note.title,
+      type: note.type,
+      importance: note.importance,
+      updated: note.updated ?? note.created,
+    });
+  }
+
+  if (dryRun) {
+    return {
+      dryRun: true,
+      candidates,
+      count: candidates.length,
+    };
+  }
+
+  const archived = [];
+
+  for (const candidate of candidates) {
+    archiveMemory(candidate.id);
+    archived.push(candidate.id);
+  }
+
+  invalidateSemanticIndex();
+
+  return {
+    dryRun: false,
+    archived,
+    count: archived.length,
+  };
 }

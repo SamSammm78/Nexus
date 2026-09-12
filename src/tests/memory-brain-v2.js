@@ -8,6 +8,9 @@ import os from "node:os";
 import path from "node:path";
 import {
   rmSync,
+  existsSync,
+  readFileSync,
+  writeFileSync,
 } from "node:fs";
 
 import {
@@ -17,6 +20,7 @@ import {
 
 import {
   ageScore,
+  invalidateSemanticIndex,
 } from "../memory/semantic.js";
 
 import {
@@ -29,7 +33,16 @@ import {
   semanticDedupeList,
   semanticConsolidate,
   semanticRelink,
+  archiveMemory,
+  unarchiveMemory,
+  listArchivedMemories,
+  agingSweep,
 } from "../memory/brain.js";
+
+import {
+  writeNote,
+  getNoteDir,
+} from "../memory/notes.js";
 
 import {
   memory_searchTool,
@@ -342,4 +355,228 @@ test("semanticConsolidate : fusionne et supprime les doublons", async () => {
       `doublon ${duplicateId} supprimé`
     );
   }
+});
+
+
+// ======================================================
+// ARCHIVAGE
+// ======================================================
+
+test("archiveMemory / unarchiveMemory : cycle complet", async () => {
+  const note = await rememberMemory({
+    type: "note",
+    title: "Note à archiver",
+    content: "Contenu à déplacer hors du rappel.",
+    importance: 0.3,
+  });
+
+  const archived = archiveMemory(note.id);
+
+  assert.ok(archived.archived);
+  assert.equal(getMemory(note.id), null, "plus visible par le rappel");
+
+  const archivedNotes = listArchivedMemories({ limit: 50 });
+
+  assert.ok(
+    archivedNotes.some(n => n.id === note.id),
+    "présente dans les archives"
+  );
+
+  const restored = unarchiveMemory(note.id);
+
+  assert.ok(restored.restored);
+  assert.ok(getMemory(note.id), "de retour dans la mémoire active");
+});
+
+
+test("agingSweep : sélectionne les notes âgées à faible importance", async () => {
+  // La note récente d'abord : rememberMemory réécrit ses backlinks —
+  // vieillir les notes ensuite garantit que leur `updated` reste stable.
+  const recentLow = await rememberMemory({
+    type: "note",
+    title: "Info fraîche",
+    content: "Information récente mais mineure.",
+    importance: 0.2,
+  });
+
+  const oldLow = backdate(
+    writeNote({
+      type: "fact",
+      title: "Détail ancien",
+      content: "Ancienne information mineure.",
+      importance: 0.2,
+    }),
+    "2020-05-01T00:00:00Z"
+  );
+
+  backdate(
+    writeNote({
+      type: "fact",
+      title: "Fait fondateur",
+      content: "Fait important que je garde.",
+      importance: 0.8,
+    }),
+    "2020-05-01T00:00:00Z"
+  );
+
+  backdate(
+    writeNote({
+      type: "place",
+      title: "Ancien lieu",
+      content: "Lieu personnel ancien.",
+      importance: 0.3,
+      latitude: 1,
+      longitude: 2,
+    }),
+    "2020-05-01T00:00:00Z"
+  );
+
+  const dry = agingSweep({
+    olderThanDays: 90,
+    maxImportance: 0.4,
+    dryRun: true,
+  });
+
+  const ids = dry.candidates.map(candidate => candidate.id);
+
+  assert.ok(dry.dryRun);
+  assert.ok(ids.includes(oldLow.id), "détail ancien peu important listé");
+  assert.ok(!ids.includes(recentLow.id), "note récente exclue");
+
+  const titles = dry.candidates.map(candidate => candidate.title);
+
+  assert.ok(!titles.includes("Fait fondateur"), "importance élevée exclue");
+  assert.ok(!titles.includes("Ancien lieu"), "lieu personnel exclu");
+});;
+
+
+test("agingSweep : applique l'archivage (dryRun=false)", async () => {
+  const note = backdate(
+    writeNote({
+      type: "note",
+      title: "Vieux brouillon",
+      content: "Ancien brouillon jamais relu.",
+      importance: 0.2,
+    }),
+    "2021-01-10T00:00:00Z"
+  );
+
+  const result = agingSweep({
+    olderThanDays: 90,
+    maxImportance: 0.4,
+    dryRun: false,
+  });
+
+  assert.equal(result.dryRun, false);
+  assert.ok(result.archived.includes(note.id));
+  assert.equal(getMemory(note.id), null, "archivée hors du rappel");
+});
+
+
+// Forge une note "ancienne" : writeNote force updated=now,
+// on anticipe donc la date dans le frontmatter.
+function backdate(note, timestamp) {
+  const raw = readFileSync(note.file, "utf8");
+
+  const patched = raw.replace(
+    /^updated: .*$/m,
+    `updated: ${timestamp}`
+  );
+
+  writeFileSync(note.file, patched);
+
+  return {
+    ...getMemory(note.id),
+    id: note.id,
+  };
+}
+
+
+// ======================================================
+// INDEX PERSISTANT
+// ======================================================
+
+test("index persistant : sauvegarde et réutilisation", async () => {
+  process.env.NEXUS_EMBED_INDEX = "1";
+
+  const indexPath = path.join(
+    getNoteDir(),
+    ".memory-index.json"
+  );
+
+  try {
+    const first = await semanticRecall({
+      query: "café du matin",
+      limit: 5,
+    });
+
+    assert.ok(existsSync(indexPath), "fichier d'index créé");
+
+    const payload = JSON.parse(
+      readFileSync(indexPath, "utf8")
+    );
+
+    assert.ok(payload.entries.length >= 1);
+
+    invalidateSemanticIndex();
+
+    const second = await semanticRecall({
+      query: "café du matin",
+      limit: 5,
+    });
+
+    assert.equal(second.length, first.length);
+    assert.ok(second[0].id === first[0].id);
+  } finally {
+    process.env.NEXUS_EMBED_INDEX = "";
+
+    try {
+      rmSync(indexPath, { force: true });
+    } catch {}
+  }
+});
+
+
+// ======================================================
+// FUSION DÉTERMINISTE : blocs quasi-réduits ignorés
+// ======================================================
+
+test("consolidation : ne réécrit pas un contenu déjà couvert", async () => {
+  const content = "Recette de salade : tomates, concombres, feta, olives, huile d'olive, citron. Mélanger le tout et servir frais.";
+
+  const a = await rememberMemory({
+    type: "note",
+    title: "Salade grecque",
+    content,
+    importance: 0.8,
+  });
+
+  await rememberMemory({
+    type: "note",
+    title: "Salade grecque variante",
+    content,
+  });
+
+  const dry = await semanticConsolidate({
+    threshold: 0.9,
+    dryRun: true,
+  });
+
+  assert.ok(dry.groups >= 1);
+
+  const summary = await semanticConsolidate({
+    threshold: 0.9,
+    dryRun: false,
+  });
+
+  assert.ok(summary.redundant >= 1, `redundant=${summary.redundant}`);
+
+  const keeper = getMemory(a.id);
+
+  assert.ok(keeper, "keeper conservé");
+  assert.equal(
+    (keeper.content.match(/Fusionné depuis/g) ?? []).length,
+    0,
+    "aucun bloc en double réécrit"
+  );
 });
