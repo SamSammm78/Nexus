@@ -1,30 +1,10 @@
 import {
-  existsSync,
-  readFileSync,
-  writeFileSync,
-  mkdirSync,
-} from "node:fs";
-import path from "node:path";
-import {
-  fileURLToPath,
-} from "node:url";
-
-
-const DEFAULT_PLACES_FILE =
-  fileURLToPath(
-    new URL(
-      "../../../data/places.json",
-      import.meta.url
-    )
-  );
-
-function placesFile() {
-  return (
-    process.env.NEXUS_PLACES_FILE
-      ? path.resolve(process.env.NEXUS_PLACES_FILE)
-      : DEFAULT_PLACES_FILE
-  );
-}
+  initBrain,
+  rememberMemory,
+  listMemories,
+  updateMemory,
+  forgetMemory,
+} from "../../memory/brain.js";
 
 
 // ======================================================
@@ -40,59 +20,42 @@ export function normalizePlaceName(name) {
 
 
 // ======================================================
-// LECTURE / ÉCRITURE
+// MAPPING NOTE → PLACE
+// ======================================================
+
+function noteToPlace(note) {
+  return {
+    id: note.id,
+    name: note.title,
+    label: note.label,
+    latitude:
+      typeof note.latitude === "number"
+        ? note.latitude
+        : null,
+    longitude:
+      typeof note.longitude === "number"
+        ? note.longitude
+        : null,
+    address: note.address,
+    createdAt: note.created,
+    updatedAt: note.updated,
+  };
+}
+
+
+// ======================================================
+// LISTE / RECHERCHE
 // ======================================================
 
 export function listPlaces() {
-  try {
-    if (!existsSync(placesFile())) {
-      return [];
-    }
+  initBrain();
 
-    const parsed =
-      JSON.parse(
-        readFileSync(placesFile(), "utf8")
-      );
-
-    return Array.isArray(parsed)
-      ? parsed
-          .filter(
-            place =>
-              place &&
-              typeof place === "object" &&
-              place.name
-          )
-          .sort(
-            (a, b) =>
-              normalizePlaceName(a.name)
-                .localeCompare(
-                  normalizePlaceName(b.name)
-                )
-          )
-      : [];
-  } catch {
-    return [];
-  }
+  return listMemories({
+    type: "place",
+    limit: 200,
+  }).map(noteToPlace);
 }
 
-
-function writePlaces(places) {
-  mkdirSync(
-    path.dirname(placesFile()),
-    { recursive: true }
-  );
-
-  writeFileSync(
-    placesFile(),
-    JSON.stringify(places, null, 2),
-    "utf8"
-  );
-}
-
-
-// ======================================================
-// RECHERCHE
-// ======================================================
 
 export function getPlace(name) {
   const key = normalizePlaceName(name);
@@ -121,6 +84,8 @@ export function savePlace({
   longitude,
   address,
 }) {
+  initBrain();
+
   const key = normalizePlaceName(name);
 
   if (!key) {
@@ -138,47 +103,41 @@ export function savePlace({
     );
   }
 
-  const now = new Date().toISOString();
-  const places = listPlaces();
+  const placeLabel = label ?? address ?? name;
 
-  const existing = places.find(
-    place =>
-      normalizePlaceName(place.name) === key
-  );
+  const content =
+    `Lieu personnel : **${name}** — ` +
+    `${placeLabel} ` +
+    `(${latitude.toFixed(4)}, ${longitude.toFixed(4)}).`;
 
-  let place;
+  const existing = getPlace(name);
+
+  let note;
 
   if (existing) {
-    place = {
-      ...existing,
-      name,
-      label:
-        label ?? existing.label ?? address ?? name,
+    note = updateMemory(existing.id, {
+      title: name,
+      content,
+      label,
+      address: address ?? existing.address,
       latitude,
       longitude,
-      address: address ?? existing.address ?? null,
-      updatedAt: now,
-    };
-
-    places[places.indexOf(existing)] = place;
+    });
   } else {
-    place = {
-      name,
-      label:
-        label ?? address ?? name,
+    note = rememberMemory({
+      type: "place",
+      title: name,
+      content,
+      label,
+      address,
       latitude,
       longitude,
-      address: address ?? null,
-      createdAt: now,
-      updatedAt: now,
-    };
-
-    places.push(place);
+      importance: 0.7,
+      tags: ["lieu"],
+    });
   }
 
-  writePlaces(places);
-
-  return place;
+  return noteToPlace(note);
 }
 
 
@@ -193,17 +152,11 @@ export function removePlace(name) {
     return false;
   }
 
-  const places = listPlaces();
-  const next = places.filter(
-    place =>
-      normalizePlaceName(place.name) !== key
-  );
+  const existing = getPlace(name);
 
-  if (next.length === places.length) {
+  if (!existing) {
     return false;
   }
 
-  writePlaces(next);
-
-  return true;
+  return forgetMemory(existing.id);
 }

@@ -38,6 +38,10 @@ const META_KEYS = [
   "milestones",
   "nextAction",
   "lastCheckpoint",
+  "label",
+  "address",
+  "latitude",
+  "longitude",
 ];
 
 const STOP_WORDS = new Set([
@@ -87,6 +91,10 @@ export function writeNote(note) {
     milestones: note.milestones ?? "",
     nextAction: note.nextAction ?? "",
     lastCheckpoint: note.lastCheckpoint ?? "",
+    label: note.label ?? "",
+    address: note.address ?? "",
+    latitude: note.latitude ?? "",
+    longitude: note.longitude ?? "",
   };
 
   const content = String(note.content ?? "").trim();
@@ -157,6 +165,10 @@ export function writeNote(note) {
     milestones: meta.milestones || null,
     nextAction: meta.nextAction || null,
     lastCheckpoint: meta.lastCheckpoint || null,
+    label: meta.label || null,
+    address: meta.address || null,
+    latitude: meta.latitude || null,
+    longitude: meta.longitude || null,
   };
 }
 
@@ -188,6 +200,10 @@ export function readNote(file) {
       milestones: parsed.meta.milestones ?? null,
       nextAction: parsed.meta.nextAction ?? null,
       lastCheckpoint: parsed.meta.lastCheckpoint ?? null,
+      label: parsed.meta.label ?? null,
+      address: parsed.meta.address ?? null,
+      latitude: parsed.meta.latitude ?? null,
+      longitude: parsed.meta.longitude ?? null,
     };
   } catch {
     return null;

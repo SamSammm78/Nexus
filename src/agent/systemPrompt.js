@@ -73,6 +73,8 @@ LOCATION RULES
 - Pour enregistrer un lieu personnel ("maison", "travail", "gymnase"...)
   → place_add avec une adresse (géocodée) ou des coordonnées.
   Ne crée jamais de lieu dupliqué : si le nom existe, place_add le met à jour.
+  Les lieux sont stockés dans le CERVEAU de NEXUS (mémoire longue, notes
+  Obsidian de type "place", retrouvables par memory_search).
 - Voir les lieux enregistrés → place_list / place_get.
 - Supprimer un lieu → place_remove.
 - Distance ou temps de trajet entre deux lieux personnels →

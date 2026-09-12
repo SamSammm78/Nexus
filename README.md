@@ -1277,7 +1277,9 @@ Avoid infinite retry loops.
    - browser_download_pdf : PDF ouvert dans le navigateur → ~/Downloads/NEXUS (URL directe, iframe/embed, blob:, session cookies conservée)
 9. ✅ Location and personal places
    - get_current_location : position actuelle approximative (IP) + géocodage inverse
-   - place_add / place_list / place_get / place_remove : lieux personnels (data/places.json)
+   - place_add / place_list / place_get / place_remove : lieux personnels
+     STOCKÉS DANS LE CERVEAU (mémoire longue, notes Obsidian type "place",
+     retrouvables par memory_search / memory_list)
    - place_distance : distance + temps de trajet voiture entre lieux
      (noms enregistrés, « ma position », adresses libres — OpenRouteService, repli haversine)
    - route LOCATION (router), outils aussi natifs (NATIVE)

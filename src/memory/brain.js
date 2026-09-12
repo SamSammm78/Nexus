@@ -27,6 +27,7 @@ export const MEMORY_TYPES = [
   "note",
   "project",
   "checkpoint",
+  "place",
 ];
 
 const MAX_CONTENT = 2000;
@@ -133,6 +134,10 @@ export function rememberMemory({
   milestones,
   nextAction,
   lastCheckpoint,
+  label,
+  address,
+  latitude,
+  longitude,
 } = {}) {
   if (!MEMORY_TYPES.includes(type)) {
     throw new Error(
@@ -177,6 +182,10 @@ export function rememberMemory({
     milestones,
     nextAction,
     lastCheckpoint,
+    label,
+    address,
+    latitude,
+    longitude,
   });
 
   backlinkRelations(note.id, related);
@@ -354,6 +363,10 @@ export function updateMemory(
     updated.projectId = patch.projectId;
   }
 
+  if (patch.title !== undefined) {
+    updated.title = String(patch.title).trim();
+  }
+
   if (patch.importance !== undefined) {
     updated.importance = patch.importance;
   }
@@ -373,6 +386,10 @@ export function updateMemory(
     "milestones",
     "nextAction",
     "lastCheckpoint",
+    "label",
+    "address",
+    "latitude",
+    "longitude",
   ]) {
     if (patch[key] !== undefined) {
       updated[key] = patch[key];

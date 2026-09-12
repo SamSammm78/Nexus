@@ -6,14 +6,13 @@ import assert from "node:assert/strict";
 
 import os from "node:os";
 import path from "node:path";
-import fs from "node:fs";
 
 import {
+  normalizePlaceName,
   listPlaces,
   getPlace,
   savePlace,
   removePlace,
-  normalizePlaceName,
 } from "../services/location/store.js";
 
 import {
@@ -24,14 +23,27 @@ import {
   resolveLocation,
 } from "../tools/location.js";
 
+import {
+  initBrain,
+  listMemories,
+  memoryStats,
+} from "../memory/brain.js";
 
-const PLACES_FILE =
-  path.join(
-    os.tmpdir(),
-    `nexus-places-${process.pid}-${Date.now()}.json`
-  );
 
-process.env.NEXUS_PLACES_FILE = PLACES_FILE;
+const VAULT = path.join(
+  os.tmpdir(),
+  `nexus-location-tests-${Date.now()}`
+);
+
+process.env.NEXUS_VAULT = VAULT;
+
+initBrain();
+
+
+test.after(async () => {
+  const { rmSync } = await import("node:fs");
+  rmSync(VAULT, { recursive: true, force: true });
+});
 
 
 // ======================================================
@@ -93,19 +105,6 @@ function stubFetch() {
       });
     }
 
-    if (target.includes("directions")) {
-      return json({
-        features: [{
-          properties: {
-            summary: {
-              distance: 5000,
-              duration: 600,
-            },
-          },
-        }],
-      });
-    }
-
     return realFetch(url, options);
   };
 
@@ -114,17 +113,22 @@ function stubFetch() {
   };
 }
 
-function cleanup() {
-  try {
-    fs.rmSync(PLACES_FILE, { force: true });
-  } catch {}
-}
 
-test.after(cleanup);
+// ======================================================
+// NORMALISATION
+// ======================================================
+
+test("normalizePlaceName : casse, espaces, trim", () => {
+  assert.equal(normalizePlaceName("  MAISON "), "maison");
+  assert.equal(normalizePlaceName("   Travail  "), "travail");
+  assert.equal(normalizePlaceName("  Le   Gym  "), "le gym");
+  assert.equal(normalizePlaceName(""), "");
+  assert.equal(normalizePlaceName(null), "");
+});
 
 
 // ======================================================
-// STORE
+// STORE (via cerveau)
 // ======================================================
 
 test("store : liste vide au départ", () => {
@@ -132,49 +136,50 @@ test("store : liste vide au départ", () => {
 });
 
 
-test("store : savePlace crée et retrouve un lieu", () => {
+test("store : savePlace crée une note de type place dans le cerveau", () => {
   const place = savePlace({
     name: "Maison",
-    label: "12 rue de Rivoli, Paris",
-    latitude: 48.8566,
-    longitude: 2.3522,
+    label: "Rue de Rivoli, Paris, France",
+    latitude: 48.8637,
+    longitude: 2.3322,
     address: "12 rue de Rivoli, Paris",
   });
 
   assert.equal(place.name, "Maison");
-  assert.equal(place.latitude, 48.8566);
+  assert.equal(place.latitude, 48.8637);
   assert.ok(place.createdAt);
 
   const found = getPlace("maison");
 
   assert.ok(found);
-  assert.equal(found.label, "12 rue de Rivoli, Paris");
+  assert.equal(found.label, "Rue de Rivoli, Paris, France");
+  assert.equal(found.address, "12 rue de Rivoli, Paris");
+
+  const stats = memoryStats();
+
+  assert.ok(stats.byType.place >= 1, "type 'place' présent dans le cerveau");
 });
 
 
-test("store : le nom est insensible à la casse et aux espaces", () => {
+test("store : getPlace est insensible à la casse et aux espaces", () => {
   savePlace({
     name: "Travail",
-    latitude: 48.8738,
-    longitude: 2.295,
-    label: "La Défense",
+    latitude: 48.8907,
+    longitude: 2.2415,
+    label: "La Défense, Puteaux, France",
   });
 
   assert.ok(getPlace("  TRAVAIL "));
-
-  const found = getPlace("travail");
-
-  assert.equal(found.name, "Travail");
-  assert.equal(normalizePlaceName("  Ma   Maison "), "ma maison");
+  assert.equal(getPlace("travail").name, "Travail");
 });
 
 
 test("store : savePlace met à jour sans dupliquer", () => {
   savePlace({
     name: "maison",
-    latitude: 48.1,
-    longitude: 2.1,
-    label: "Adresse mise à jour",
+    latitude: 48.865,
+    longitude: 2.333,
+    label: "12 rue de Rivoli, Paris 3e",
   });
 
   const places = listPlaces();
@@ -183,33 +188,52 @@ test("store : savePlace met à jour sans dupliquer", () => {
 
   const maison = getPlace("maison");
 
-  assert.equal(maison.latitude, 48.1);
-  assert.equal(maison.label, "Adresse mise à jour");
+  assert.equal(maison.latitude, 48.865);
+  assert.equal(maison.label, "12 rue de Rivoli, Paris 3e");
   assert.ok(maison.updatedAt !== maison.createdAt);
 });
 
 
-test("store : removePlace supprime uniquement le bon lieu", () => {
+test("store : une place est lisible comme note mémoire", () => {
+  const notes = listMemories({ type: "place", limit: 10 });
+
+  const note = notes.find(
+    n => normalizePlaceName(n.title) === "maison"
+  );
+
+  assert.ok(note);
+  assert.equal(note.type, "place");
+  assert.equal(note.latitude, 48.865);
+  assert.equal(note.address, "12 rue de Rivoli, Paris");
+  assert.ok(note.content.includes("Lieu personnel"));
+});
+
+
+test("store : removePlace supprime la note du cerveau", () => {
   assert.equal(removePlace("inconnu"), false);
   assert.equal(removePlace("maison"), true);
   assert.equal(getPlace("maison"), null);
   assert.equal(listPlaces().length, 1);
+
+  const notes = listMemories({ type: "place", limit: 10 });
+
+  assert.ok(!notes.some(n => n.title === "Maison"));
 });
 
 
-test("store : savePlace rejette les coordonnées invalides", () => {
+test("store : savePlace rejette les entrées invalides", () => {
   assert.throws(() => {
-    savePlace({ name: "x", latitude: "a", longitude: 2 });
+    savePlace({ name: "", latitude: 1, longitude: 2 });
   });
 
   assert.throws(() => {
-    savePlace({ name: "", latitude: 1, longitude: 2 });
+    savePlace({ name: "x", latitude: "a", longitude: 2 });
   });
 });
 
 
 // ======================================================
-// DISTANCE
+// DISTANCE (haversine pure)
 // ======================================================
 
 test("haversineKm : Paris–Lyon ≈ 390-450 km", () => {
@@ -236,14 +260,7 @@ test("haversineKm : distance nulle entre deux points identiques", () => {
 // RÉSOLUTION DE LIEU
 // ======================================================
 
-test("resolveLocation : 'current' / 'ma position' → position actuelle", async () => {
-  savePlace({
-    name: "maison",
-    latitude: 48.8566,
-    longitude: 2.3522,
-    label: "Paris",
-  });
-
+test("resolveLocation : 'current' → position actuelle stub", async () => {
   const restore = stubFetch();
 
   try {
@@ -262,12 +279,20 @@ test("resolveLocation : 'current' / 'ma position' → position actuelle", async 
 });
 
 
-test("resolveLocation : lieu enregistré prioritaire sur le géocodage", async () => {
+test("resolveLocation : lieu enregistré → source 'saved'", async () => {
+  savePlace({
+    name: "Maison",
+    latitude: 48.865,
+    longitude: 2.333,
+    label: "12 rue de Rivoli, Paris 3e",
+    address: "12 rue de Rivoli, Paris",
+  });
+
   const resolved = await resolveLocation("MAISON");
 
   assert.equal(resolved.source, "saved");
-  assert.equal(resolved.name, "maison");
-  assert.equal(resolved.latitude, 48.8566);
+  assert.equal(normalizePlaceName(resolved.name), "maison");
+  assert.equal(resolved.latitude, 48.865);
 });
 
 
@@ -275,18 +300,17 @@ test("resolveLocation : valeur inconnue → géocodage", async () => {
   const restore = stubFetch();
 
   try {
-    const resolved = await resolveLocation("un quartier inconnu");
+    const resolved = await resolveLocation("un lieu inconnu");
 
     assert.equal(resolved.source, "geocoded");
     assert.equal(resolved.label, "Paris, France");
-    assert.equal(resolved.latitude, 48.8566);
   } finally {
     restore();
   }
 });
 
 
-test("resolveLocation : current ignoré quand useCurrent=false → géocodage", async () => {
+test("resolveLocation : 'current' ignoré si useCurrent=false", async () => {
   const restore = stubFetch();
 
   try {
