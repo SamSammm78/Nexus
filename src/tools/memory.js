@@ -7,12 +7,17 @@ import {
   listMemories,
   updateMemory,
   forgetMemory,
+  semanticRecall,
+  semanticGraph,
+  semanticDedupeList,
+  semanticConsolidate,
 } from "../memory/brain.js";
 
 
 const STRING = Type.STRING;
 const NUMBER = Type.NUMBER;
 const ARRAY = Type.ARRAY;
+const BOOLEAN = Type.BOOLEAN;
 
 const typeParameter = {
   type: STRING,
@@ -77,34 +82,50 @@ export const memory_searchTool = {
   declaration: {
     name: "memory_search",
     description:
-      "Recherche dans la mémoire longue (notes Obsidian) par mots-clés. Retourne des notes compactées (extrait court).",
+      "Recherche dans la mémoire longue (notes Obsidian). \"query\" : recherche SEMANTIQUE par le sens (phrase naturelle). Sinon : \"keywords\" (mots-clés). Retourne des notes compactées (extrait court).",
     parameters: {
       type: Type.OBJECT,
       properties: {
+        query: {
+          type: STRING,
+          description:
+            "Requête en langage naturel : recherche par similarité sémantique (\"ce que j'aime manger au petit-déjeuner\").",
+        },
         keywords: {
           type: ARRAY,
           items: { type: STRING },
           description:
-            "Mots-clés à chercher dans le contenu des notes.",
+            "Mots-clés à chercher dans le contenu des notes (recherche lexicale).",
         },
         type: typeParameter,
         projectId: projectParameter,
         limit: limitParameter,
       },
-      required: ["keywords"],
     },
   },
 
   execute: async (args = {}) => {
-    const notes = recallMemories({
-      type: args.type ?? null,
-      projectId: args.projectId ?? null,
-      keywords: args.keywords ?? [],
-      limit: args.limit ?? 10,
-    });
+    const limit = args.limit ?? 10;
+
+    const notes = (
+      args.query?.trim()
+        ? await semanticRecall({
+            query: args.query,
+            type: args.type ?? null,
+            projectId: args.projectId ?? null,
+            limit,
+          })
+        : recallMemories({
+            type: args.type ?? null,
+            projectId: args.projectId ?? null,
+            keywords: args.keywords ?? [],
+            limit,
+          })
+    );
 
     return {
       count: notes.length,
+      semantic: Boolean(args.query?.trim()),
       notes: notes.map(compactNote),
     };
   },
@@ -215,6 +236,91 @@ export const memory_updateTool = {
 };
 
 
+export const memory_dedupeTool = {
+  declaration: {
+    name: "memory_dedupe",
+    description:
+      "Détecte les notes quasi identiques (similarité d'embeddings) et, si dryRun=false, les consolide : le contenu des doublons est fusionné dans la note la plus riche puis les fichiers en trop sont supprimés.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        dryRun: {
+          type: BOOLEAN,
+          description:
+            "true (défaut) : liste les doublons sans rien modifier. false : fusionne et supprime.",
+        },
+        threshold: {
+          type: NUMBER,
+          description:
+            "Seuil de similarité (0.9 par défaut).",
+        },
+      },
+    },
+  },
+
+  execute: async (args = {}) => {
+    const dryRun = args.dryRun !== false;
+    const threshold = args.threshold ?? 0.9;
+
+    if (dryRun) {
+      const groups = await semanticDedupeList({ threshold });
+
+      return {
+        dryRun: true,
+        groups: groups.length,
+        candidates: groups.map(group => ({
+          keeper: compactNote(group.keeper),
+          duplicates:
+            group.duplicates.map(compactNote),
+        })),
+      };
+    }
+
+    const summary = await semanticConsolidate({
+      threshold,
+      dryRun: false,
+    });
+
+    return {
+      dryRun: false,
+      ...summary,
+    };
+  },
+};
+
+
+export const memory_similarTool = {
+  declaration: {
+    name: "memory_similar",
+    description:
+      "Retourne les notes les plus proches sémantiquement d'une note donnée (graphe de mémoire).",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        id: {
+          type: STRING,
+          description:
+            "Id de la note de référence (memory_search / memory_list).",
+        },
+        limit: limitParameter,
+      },
+      required: ["id"],
+    },
+  },
+
+  execute: async (args = {}) => {
+    const notes = await semanticGraph(args.id, {
+      limit: args.limit ?? 5,
+    });
+
+    return {
+      count: notes.length,
+      notes: notes.map(compactNote),
+    };
+  },
+};
+
+
 function compactNote(note) {
   return {
     id: note.id,
@@ -243,4 +349,6 @@ export const memoryTools = [
   memory_listTool,
   memory_updateTool,
   memory_forgetTool,
+  memory_dedupeTool,
+  memory_similarTool,
 ];

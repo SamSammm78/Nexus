@@ -645,7 +645,9 @@ Fichiers :
 src/memory/brain.js      # API: remember / recall / update / forget / list / stats + projet + relations
 src/memory/notes.js      # gestion des notes .md + frontmatter (+ champs projet, relations)
 src/memory/state.js      # état persistant (projet actif)
-src/tools/memory.js      # outils modèles: memory_add / search / list / update / forget
+src/memory/embed.js      # embeddings hybrides (ollama local | hashing déterministe)
+src/memory/semantic.js   # recherche sémantique, doublons, consolidation, graphe, aging
+src/tools/memory.js      # outils modèles: memory_add / search / list / update / forget / dedupe / similar
 src/tools/project.js     # outils projets: project_init / set / checkpoint / log / status / resume / list
 ```
 
@@ -659,7 +661,7 @@ event
 note
 project      (souche du projet, frontmatter état courant)
 checkpoint   (bilan chaîné dans le temps)
-project
+place        (lieux personnels, stockés dans le cerveau)
 ```
 
 Nom des fichiers (style « second brain ») :
@@ -722,7 +724,7 @@ Intégration :
   NAS... : NEXUS peut donc retenir une information pendant n'importe
   quelle tâche, ex. un agenda ajouté au calendrier) :
   `memory_add`, `memory_search`, `memory_list`,
-  `memory_update`, `memory_forget`.
+  `memory_update`, `memory_forget`, `memory_dedupe`, `memory_similar`.
 - état du second cerveau : `data/nexus-state.json` (projet actif).
 - **liens entre notes** : à la création, NEXUS relie automatiquement la
   note aux notes déjà liées par le sujet (mots-clés rares pondérés IDF +
@@ -762,19 +764,38 @@ CLI :
 /projects          Liste de tous les projets
 ```
 
-Future Memory V2:
+### Memory Brain V2 — V2a : embeddings & moteur sémantique ✅ (en cours)
 
-```text
-embeddings
-semantic search
-deduplication
-automatic consolidation
-memory aging
-confidence
-importance
-relationships
-graph-like memory
-```
+Le cerveau apprend à **chercher par le sens**, pas seulement par mots-clés.
+
+- **embed.js — embeddings hybrides** : vecteurs à 512 dimensions ;
+  - `ollama` : embeddings réels via Ollama local (`nomic-embed-text`),
+    si Ollama est joignable (`NEXUS_EMBED_MODE=auto` sonde une fois) ;
+  - `local` : feature hashing déterministe sans réseau, normalisé L2
+    (tests hors-ligne, repli automatique si Ollama est absent) ;
+  - config : `NEXUS_EMBED_MODE` (auto|local|ollama), `NEXUS_EMBED_URL`,
+    `NEXUS_EMBED_MODEL`.
+- **semantic.js — couche sémantique** :
+  - `semanticSearch` : similarité cosinus query ↔ notes (combinée à un
+    boost lexical, `importance` et `ageScore` — fraîcheur à demi-vie ~180 j) ;
+  - `semanticNeighbors` : voisins sémantiques d'une note (**graphe**) ;
+  - `findDuplicateGroups` : détection de notes quasi identiques ;
+  - `consolidateDuplicates` : fusion des doublons dans la note la plus
+    riche (`> Fusionné depuis « ... »`) puis suppression des fichiers ;
+  - index vectoriel en mémoire, invalidé automatiquement à chaque
+    écriture/suppression (remember / update / forget).
+- **brain.js** : pont async `semanticRecall`, `semanticGraph`,
+  `semanticDedupeList`, `semanticConsolidate`, `semanticRelink`.
+- **Outils** :
+  - `memory_search` : paramètre `query` (phrase naturelle) → recherche
+    sémantique ; `keywords` → recherche lexicale (comportement V1 intact) ;
+  - `memory_dedupe` : liste les doublons, `dryRun=false` les consolide ;
+  - `memory_similar` : voisins sémantiques d'une note (graphe).
+- La V1 (mots-clés, synonymes, rappel automatique) reste pleinement
+  opérationnelle et hybride avec la V2.
+
+À venir dans la V2 (caps suivants) : consolidation pilotée modèle,
+aging/archivage automatique, index persistant, vrai graphe exploitable.
 
 ---
 
@@ -1287,6 +1308,12 @@ Avoid infinite retry loops.
 
 À VENIR
 
+18. 🚧 Memory Brain V2 (PRIORITÉ 1 — V2a livrée, on continue)
+   - ✅ embeddings hybrides (Ollama local | hashing déterministe)
+   - ✅ recherche sémantique par le sens (memory_search query)
+   - ✅ dédoublonnage + consolidation (memory_dedupe)
+   - ✅ graphe de mémoire (memory_similar / semanticRelink)
+   - 🚧 aging & archivage automatique, consolidation pilotée modèle
 10. Google Tasks
 11. Voice Overlay (reactive orb • STT • TTS • ambient UI)
 12. Context Copilot
@@ -1295,7 +1322,6 @@ Avoid infinite retry loops.
 15. Persistent NEXUS Core service
 16. Full Workspace / HUD
 17. Proactivity
-18. Memory Brain V2
 19. Advanced local AI
 20. Vault / Knowledge Base
 ```
@@ -1303,6 +1329,8 @@ Avoid infinite retry loops.
 Near-term order:
 
 ```text
+Memory Brain V2
+  ↓
 Google Tasks
   ↓
 Voice Overlay

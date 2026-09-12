@@ -18,6 +18,15 @@ import {
   listNoteFiles,
 } from "./notes.js";
 
+import {
+  invalidateSemanticIndex,
+  semanticSearch,
+  semanticNeighbors,
+  findDuplicateGroups,
+  consolidateDuplicates,
+  semanticRelinkMemories,
+} from "./semantic.js";
+
 
 export const MEMORY_TYPES = [
   "fact",
@@ -189,6 +198,8 @@ export function rememberMemory({
   });
 
   backlinkRelations(note.id, related);
+
+  invalidateSemanticIndex();
 
   return note;
 }
@@ -406,6 +417,8 @@ export function updateMemory(
     }
   }
 
+  invalidateSemanticIndex();
+
   return result;
 }
 
@@ -415,7 +428,13 @@ export function forgetMemory(id) {
 
   if (!file) return false;
 
-  return deleteNote(file);
+  const deleted = deleteNote(file);
+
+  if (deleted) {
+    invalidateSemanticIndex();
+  }
+
+  return deleted;
 }
 
 
@@ -992,4 +1011,73 @@ function findLatestEventId() {
   return events.length > 0
     ? events[0].id
     : null;
+}
+
+
+// ============================================================
+// MEMORY BRAIN V2 — PONT SÉMANTIQUE (async)
+// ------------------------------------------------------------
+// Recherche par sens, voisinage (graphe), doublons et
+// consolidation. Moteurs dans semantic.js / embed.js.
+// ============================================================
+
+export async function semanticRecall({
+  query,
+  type = null,
+  projectId = null,
+  limit = 10,
+  threshold = 0,
+} = {}) {
+  initBrain();
+
+  return semanticSearch({
+    query,
+    type,
+    projectId,
+    limit,
+    threshold,
+  });
+}
+
+
+export async function semanticGraph(
+  id,
+  {
+    limit = 5,
+    threshold = 0.4,
+  } = {}
+) {
+  initBrain();
+
+  return semanticNeighbors(id, { limit, threshold });
+}
+
+
+export async function semanticDedupeList({
+  threshold = 0.9,
+  maxGroups = 20,
+} = {}) {
+  initBrain();
+
+  return findDuplicateGroups({ threshold, maxGroups });
+}
+
+
+export async function semanticConsolidate({
+  threshold = 0.9,
+  dryRun = true,
+} = {}) {
+  initBrain();
+
+  return consolidateDuplicates({ threshold, dryRun });
+}
+
+
+export async function semanticRelink({
+  limit = 3,
+  threshold = 0.4,
+} = {}) {
+  initBrain();
+
+  return semanticRelinkMemories({ limit, threshold });
 }

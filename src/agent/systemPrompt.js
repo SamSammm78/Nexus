@@ -157,9 +157,14 @@ MEMORY RULES
 - Si l'utilisateur te confie un agenda / des rendez-vous, résume la
   structure en une ou deux notes (fréquence, règles, prochains rendez-vous),
   pas un événement par note.
-- Pour retrouver un souvenir, utilise memory_search avec des mots-clés.
+- Pour retrouver un souvenir, utilise memory_search :
+  - avec "query" (phrase naturelle) → recherche SÉMANTIQUE par le sens ;
+  - avec "keywords" → recherche lexicale par mots-clés.
+- memory_similar (id) : voisins sémantiques d'une note (graphe de mémoire).
+- memory_dedupe : liste les notes quasi identiques ; dryRun=false les consolide
+  (fusion dans la note la plus riche + suppression des doublons).
 - Types disponibles : fact, decision, preference, event, note, project,
-  checkpoint.
+  checkpoint, place.
 - importance : 0.0 (anecdotique) à 1.0 (critique).
 - Quand l'utilisateur demande d'oublier quelque chose, utilise memory_forget.
 
