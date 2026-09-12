@@ -18,6 +18,12 @@ process.env.NEXUS_FILES_ROOT =
 process.env.NEXUS_FILES_DOWNLOAD_DIR =
   path.join(TMP, "Documents", "downloads");
 
+process.env.NEXUS_FILES_BROWSER_PROFILE =
+  path.join(TMP, "chrome-profile");
+
+process.env.NEXUS_FILES_COOKIE_JAR =
+  path.join(TMP, "cookies.txt");
+
 const TMP_DOWNLOADS =
   process.env.NEXUS_FILES_DOWNLOAD_DIR;
 
@@ -755,6 +761,39 @@ test("file_download : protocole non autorisé refusé", async () => {
     () => file_downloadTool.execute({ url: "file:///etc/passwd" }),
     /Protocole/
   );
+});
+
+test("file_download : curl authentifié réutilise le cookie jar", async () => {
+  const jar = process.env.NEXUS_FILES_COOKIE_JAR;
+
+  fs.writeFileSync(
+    jar,
+    [
+      "# NEXUS cookie jar",
+      "127.0.0.1\tFALSE\t/\tFALSE\t0\tsid\tabc123",
+      "",
+    ].join("\n")
+  );
+
+  const server = await startTestServer({
+    payload: "%PDF-1.4\nvia-curl",
+    headers: {
+      "content-disposition": 'attachment; filename="cookies.pdf"',
+    },
+  });
+
+  try {
+    const result = await file_downloadTool.execute({
+      url: server.url,
+      filename: "cookies.pdf",
+    });
+
+    assert.equal(result.name, "cookies.pdf");
+    assert.ok(fs.readFileSync(result.path, "utf8").startsWith("%PDF-"));
+  } finally {
+    await server.close();
+    fs.rmSync(jar, { force: true });
+  }
 });
 
 test("file_download : mode navigateur (Playwright) avec session JS", async (t) => {

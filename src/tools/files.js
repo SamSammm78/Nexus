@@ -461,7 +461,7 @@ const file_downloadTool = {
   declaration: {
     name: "file_download",
     description:
-      "Télécharge un fichier depuis une URL (HTTP/HTTPS) vers l'espace de fichiers local (dossier 'downloads' par défaut). En browser:true, télécharge via un vrai navigateur (session, cookies, JavaScript) — indispensable quand le fichier vient d'une page ouverte avec le navigateur. Le fichier est validé : si le serveur renvoie une page HTML ou un fichier corrompu, l'outil l'indique. Confirmation requise si le fichier est volumineux ou si un fichier du même nom existe déjà.",
+      "Télécharge un fichier depuis une URL (HTTP/HTTPS) vers l'espace de fichiers local (dossier 'downloads' par défaut). En browser:true, télécharge via un vrai navigateur avec un profil persistant : si le site demande une connexion (compte étudiant, etc.), une fenêtre Chrome s'ouvre pour que l'utilisateur se connecte — la session (cookies) est ensuite mémorisée et réutilisée pour des téléchargements rapides et authentifiés. Le fichier est validé : si le serveur renvoie une page HTML ou un fichier corrompu, l'outil l'indique. Confirmation requise si le fichier est volumineux ou si un fichier du même nom existe déjà.",
     parameters: {
       type: Type.OBJECT,
       properties: {
@@ -473,7 +473,7 @@ const file_downloadTool = {
         browser: {
           type: "boolean",
           description:
-            "true pour télécharger via un vrai navigateur (recommendé si l'utilisateur a ouvert le site dans le navigateur ou si le site demande une session). Défaut : false (HTTP direct).",
+            "true pour télécharger via un vrai navigateur (recommandé si le site demande une session ou si l'utilisateur a ouvert le site dans le navigateur). Défaut : false (HTTP direct, avec session automatique si déjà connecté).",
         },
         folder: {
           type: STRING,
@@ -484,6 +484,11 @@ const file_downloadTool = {
           type: STRING,
           description:
             "Nom de fichier à enregistrer (défaut : dérivé de l'URL ou du site).",
+        },
+        interactive: {
+          type: "boolean",
+          description:
+            "false pour ne jamais ouvrir la fenêtre de connexion et échouer immédiatement si le site exige une session. Défaut : true.",
         },
         confirmed: {
           type: "boolean",
@@ -496,12 +501,18 @@ const file_downloadTool = {
 
   async execute(args = {}) {
     if (args.browser) {
-      return downloadViaBrowser({
+      const result = await downloadViaBrowser({
         url: args.url,
         folder: args.folder,
         filename: args.filename,
         confirmed: args.confirmed,
+        interactive: args.interactive,
       });
+
+      const gainedSession =
+        result.gainedSession ? true : false;
+
+      return { ...result, via: "browser", gainedSession };
     }
 
     try {
@@ -527,6 +538,7 @@ const file_downloadTool = {
           folder: args.folder,
           filename: args.filename,
           confirmed: args.confirmed,
+          interactive: args.interactive,
         });
 
         return { ...result, via: "browser", retriedAfter: "http" };

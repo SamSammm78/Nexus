@@ -34,6 +34,10 @@ import {
 } from "../tools/files.js";
 
 import {
+  cookieJarReady,
+} from "../services/browser/profiles.js";
+
+import {
   closeDownloadBrowser,
 } from "../services/browser/download.js";
 
@@ -1572,6 +1576,10 @@ async function handleCommand(message) {
 
       const { root, sourcePriority, downloadDir } = getFilesSettings();
 
+      const sessionStatus = cookieJarReady()
+        ? `${COLORS.green}SESSION ACTIVE{/} (cookies de connexion enregistrés)`
+        : `${COLORS.muted}Aucune session enregistrée : le premier téléchargement d'un site protégé ouvrira Chrome pour se connecter.{/}`;
+
       addNexusMessage(
         [
           "FICHIERS",
@@ -1579,6 +1587,7 @@ async function handleCommand(message) {
           `Racine locale : {${COLORS.cyan}-fg}${root}{/}`,
           `Source prioritaire : {${COLORS.cyan}-fg}${sourcePriority === "local" ? "LOCAL (disque)" : "GOOGLE DRIVE"}{/}`,
           `Téléchargements : {${COLORS.cyan}-fg}${downloadDir}{/}`,
+          `Session : ${sessionStatus}`,
           "",
           "Commandes : /files root <chemin> · /files priority <local|drive> · /files downloaddir <chemin> · /files pending",
         ].join("\n")
@@ -1606,6 +1615,13 @@ async function handleCommand(message) {
           confirmed: true,
         });
 
+        const sessionNote =
+          result.gainedSession
+            ? "\nSession enregistrée : les prochains téléchargements de ce site seront automatiques et authentifiés (cookies conservés)."
+            : result.via === "browser"
+              ? "\nSession (cookies) réutilisée : vos téléchargements de ce site passent désormais par le chemin rapide authentifié."
+              : "";
+
         addNexusMessage(
           [
             "TÉLÉCHARGEMENT TERMINÉ",
@@ -1616,7 +1632,8 @@ async function handleCommand(message) {
             result.via === "browser"
               ? `Mode : {${COLORS.muted}-fg}navigateur (session){/}`
               : `Mode : {${COLORS.muted}-fg}HTTP direct{/}`,
-          ].join("\n")
+            sessionNote,
+          ].filter(Boolean).join("\n")
         );
       } catch (error) {
         addNexusMessage(

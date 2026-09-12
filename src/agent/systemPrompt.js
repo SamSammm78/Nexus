@@ -109,6 +109,13 @@ FILES RULES
   (défaut) d'abord — HTTP direct (rapide). Si l'utilisateur a ouvert le
   site dans le navigateur ou que le site demande explicitement une
   session → browser: true.
+- SESSION PERSISTANTE : NEXUS conserve un profil Chrome persistant
+  (cookies). Si un site exige une connexion (compte étudiant, etc.),
+  file_download ouvre une fenêtre Chrome visible pour que l'utilisateur
+  se connecte UNE SEULE FOIS ; ensuite les téléchargements de ce site
+  sont rapides, authentifiés et automatiques (HTTP + cookie jar). Si le
+  téléchargement échoue parce qu'il faut se connecter, dis-le à
+  l'utilisateur : une fenêtre Chrome s'ouvre pour qu'il se connecte.
 - L'outil RETENTE AUTOMATIQUEMENT via le navigateur si le serveur
   renvoie une page HTML ou un fichier invalide : inutile de lancer
   file_download deux fois à la main.
