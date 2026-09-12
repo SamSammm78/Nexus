@@ -143,6 +143,9 @@ function getToolsForRoute(route) {
 
     case "BROWSER":
       return playwrightDeclarations
+        .concat(
+          getNativeDeclaration("download_file")
+        )
         .concat(memoryDeclarations)
         .filter(Boolean);
 

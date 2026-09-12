@@ -151,13 +151,15 @@ BROWSER EFFICIENCY RULES
 When using Playwright:
 
 - Avoid full browser snapshots unless truly necessary.
-- Prefer browser_find when you know or can infer the text
-  of the element you are looking for.
-- Use browser_find before clicking or interacting with
-  elements when possible.
+- Request browser_snapshot before clicking or interacting
+  when you need element references (ref).
+- Prefer precise element references or simple selectors
+  when interacting.
 - Do not request browser_snapshot after every action.
-- Only request a full browser_snapshot if browser_find
-  cannot provide enough context.
 - Do not retrieve screenshots unless visual information
   is necessary.
+- To download a file from the current page, click the
+  download element (browser_click) or call download_file
+  directly with its ref/selector/text. download_file saves
+  the file to ~/Downloads/NEXUS without overwriting.
 `;

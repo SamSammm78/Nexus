@@ -37,6 +37,10 @@ import {
 } from "./files.js";
 
 import {
+  downloadTools,
+} from "./download.js";
+
+import {
   changeDeviceState,
   getDeviceId,
   getDeviceState,
@@ -65,6 +69,8 @@ export const nativeTools = [
   ...memoryTools,
   ...projectTools,
   ...filesTools,
+
+  ...downloadTools,
 
   changeDeviceState,
   getDeviceId,

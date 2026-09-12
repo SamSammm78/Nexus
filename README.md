@@ -458,6 +458,7 @@ src/services/files/settings.js   → racine + priorité (data/files-config.json)
 src/services/files/local.js      → recherche / list / lecture disque
 src/services/google/drive.js     → recherche / list / lecture Google Drive
 src/tools/files.js               → file_search / file_list / file_read / file_write / file_mkdir / file_move / file_copy
+src/tools/download.js            → download_file
 ```
 
 - `file_search` : recherche par nom, source `auto` = source prioritaire
@@ -483,6 +484,15 @@ src/tools/files.js               → file_search / file_list / file_read / file_
 - `file_copy` : copie un fichier/dossier (l'original reste en place).
   Destination = dossier existant → copie dedans. Écrasement d'une
   destination existante soumis à confirmation explicite.
+- `download_file` : télécharge un fichier depuis la page web ouverte
+  (navigateur Playwright MCP). Cible par `ref` > `selector` > `text`,
+  puis clic et attente de la fin du téléchargement. Les fichiers sont
+  enregistrés dans `~/Downloads/NEXUS` avec un nom sécurisé (basename,
+  `_` à la place des `/` et `\`) et jamais d'écrasement (`facture (1).pdf`).
+  Codes d'erreur : `NO_ACTIVE_PAGE`, `ELEMENT_NOT_FOUND`,
+  `DOWNLOAD_TIMEOUT` / `DOWNLOAD_CANCELLED`, `INVALID_FILENAME`,
+  `DOWNLOAD_FAILED`. Le serveur `@playwright/mcp` est épinglé en `0.0.72`
+  (versions plus récentes plantent sur le téléchargement).
 - Drive est branché sur le même OAuth que Gmail/Calendar
   (scope supplémentaire `drive.readonly` — voir re-autorisation ci-dessous).
 - Config : `data/files-config.json` (`root`, `sourcePriority`), surchargée
@@ -1248,6 +1258,7 @@ Avoid infinite retry loops.
    - file_list / file_read : navigation + lecture texte / binaire / images+PDF
    - file_write / file_mkdir : création fichiers + dossiers (confirmation écrasement)
    - file_move / file_copy : déplacer / copier fichiers et dossiers (confirmation écrasement)
+   - download_file : téléchargement web → ~/Downloads/NEXUS (via navigateur Playwright, ref/selector/text, anti-écrasement)
    - route FILES (router), disponible aussi sur NATIVE/BROWSER
    - configuration : racine locale, priorité local / drive, CLI /files
 
