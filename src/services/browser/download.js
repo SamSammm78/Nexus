@@ -125,6 +125,20 @@ async function launchContext(headless) {
   }
 }
 
+// Réutilise TOUJOURS la même page (fenêtre/onglet) du profil persistant :
+// aucun onglet about:blank supplémentaire n'est créé à chaque téléchargement.
+async function sharedPage(context) {
+  const pages = context.pages();
+
+  const existing = pages.find((page) => !page.isClosed());
+
+  if (existing) {
+    return existing;
+  }
+
+  return context.newPage();
+}
+
 async function sharedContext(headless) {
   if (
     sharedContextPromise &&
@@ -299,7 +313,7 @@ async function buildSessionInteractively({
 }) {
   const context = await sharedContext(false);
 
-  const page = await context.newPage();
+  const page = await sharedPage(context);
 
   await page.goto(url, {
     waitUntil: "committed",
@@ -382,8 +396,8 @@ async function buildSessionInteractively({
   } finally {
     clearInterval(cookieTimer);
 
-    await page.close().catch(() => {});
-
+    // La fenêtre reste ouverte sur le site (pratique pour confirmer la
+    // connexion ou relancer un téléchargement au clic).
     refreshCookieJar(context);
   }
 }
@@ -408,7 +422,7 @@ export async function downloadViaBrowser({
     await sharedContext(true);
 
   const headlessPage =
-    await headlessContext.newPage();
+    await sharedPage(headlessContext);
 
   try {
     return await captureDownload({
@@ -420,8 +434,6 @@ export async function downloadViaBrowser({
       timeoutMs,
     });
   } catch (error) {
-    await headlessPage.close().catch(() => {});
-
     refreshCookieJar(headlessContext);
 
     if (error?.code !== "LOGIN_REQUIRED") {
