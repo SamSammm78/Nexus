@@ -457,7 +457,7 @@ et Google Drive, avec **le LOCAL en source prioritaire**
 src/services/files/settings.js   → racine + priorité (data/files-config.json)
 src/services/files/local.js      → recherche / list / lecture disque
 src/services/google/drive.js     → recherche / list / lecture Google Drive
-src/tools/files.js               → file_search / file_list / file_read
+src/tools/files.js               → file_search / file_list / file_read / file_write / file_mkdir / file_move / file_download
 ```
 
 - `file_search` : recherche par nom, source `auto` = source prioritaire
@@ -477,6 +477,9 @@ src/tools/files.js               → file_search / file_list / file_read
 - `file_write` : crée/écrase un fichier texte local (écrasement = confirmation).
 - `file_mkdir` : crée des dossiers (récursif) — utilisé UNIQUEMENT sur
   demande explicite de l'utilisateur, jamais pour explorer.
+- `file_move` : déplace ou renomme un fichier/dossier (destination =
+  dossier existant → déplace dedans). L'écrasement d'une destination
+  existante nécessite une confirmation explicite.
 - `file_download` : télécharge une URL vers le dossier **Téléchargements**
   de l'utilisateur (`~/Downloads`). D'abord en mode HTTP direct (rapide) ;
   si le serveur renvoie une page HTML ou un fichier invalide, l'outil

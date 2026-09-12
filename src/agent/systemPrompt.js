@@ -99,6 +99,9 @@ FILES RULES
   signale-le et indique son chemin.
 - file_mkdir : UNIQUEMENT quand l'utilisateur demande de créer un
   dossier. Chemins relatifs à la racine locale (ex: 'cours/S1/programmation').
+- DÉPLACER ou RENOMMER un fichier/dossier → file_move (from, to).
+  L'écrasement d'une destination existante nécessite une confirmation
+  explicite.
 - TÉLÉCHARGER : file_download avec une URL (ex. un document vu
   dans le navigateur Playwright). Destination par défaut : le dossier
   Téléchargements de l'utilisateur (~/Downloads). VITE : browser: false

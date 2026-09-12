@@ -1,9 +1,12 @@
 import {
+  cpSync,
   existsSync,
   lstatSync,
   mkdirSync,
   readFileSync,
   readdirSync,
+  renameSync,
+  rmSync,
   statSync,
   writeFileSync,
 } from "node:fs";
@@ -339,6 +342,80 @@ export function resolveLocalPath(targetPath) {
 
 export function localFileExists(targetPath) {
   return existsSync(resolveLocalPath(targetPath));
+}
+
+export function moveLocalFile(
+  sourcePath,
+  targetPath,
+  { confirmed = false } = {}
+) {
+  if (!sourcePath || !targetPath) {
+    throw new Error(
+      "Chemin source et destination requis."
+    );
+  }
+
+  const from = resolveLocalPath(sourcePath);
+  let to = resolveLocalPath(targetPath);
+
+  if (!existsSync(from)) {
+    throw new Error(
+      `Fichier ou dossier introuvable : ${from}`
+    );
+  }
+
+  // Destination = dossier existant → on déplace DANS ce dossier
+  // en conservant le nom du fichier.
+  if (existsSync(to) && lstatSync(to).isDirectory()) {
+    to = join(
+      to,
+      from.split("/").pop()
+    );
+  }
+
+  if (resolve(from) === resolve(to)) {
+    throw new Error(
+      "Source et destination sont identiques : rien à déplacer."
+    );
+  }
+
+  if (existsSync(to) && confirmed !== true) {
+    throw new Error(
+      `Un fichier ou dossier existe déjà à la destination (${to}) : demande confirmation explicite puis relance avec confirmed: true pour l'écraser.`
+    );
+  }
+
+  const targetExisted = existsSync(to);
+
+  mkdirSync(dirname(to), { recursive: true });
+
+  try {
+    renameSync(from, to);
+  } catch (error) {
+    if (error?.code !== "EXDEV") {
+      throw error;
+    }
+
+    // Volume différent : copie puis suppression de l'original.
+    if (existsSync(to)) {
+      rmSync(to, { recursive: true, force: true });
+    }
+
+    cpSync(from, to, { recursive: true });
+
+    rmSync(from, { recursive: true, force: true });
+  }
+
+  const stats = statSync(to);
+
+  return {
+    from,
+    to: resolve(to),
+    moved: true,
+    size: stats.isDirectory() ? null : stats.size,
+    isDir: stats.isDirectory(),
+    overwritten: targetExisted,
+  };
 }
 
 export function createLocalFolder(targetPath) {

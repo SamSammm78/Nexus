@@ -6,6 +6,7 @@ import {
   readLocalFile,
   writeLocalFile,
   createLocalFolder,
+  moveLocalFile,
   localFileExists,
 } from "../services/files/local.js";
 
@@ -385,6 +386,41 @@ const file_mkdirTool = {
 };
 
 
+const file_moveTool = {
+  declaration: {
+    name: "file_move",
+    description:
+      "Déplace OU renomme un fichier ou dossier (local). Renommer = même dossier, nouveau nom. Destination = dossier existant → déplace dedans en gardant le nom. L'écrasement d'une destination existante nécessite une confirmation explicite (confirmed: true). Les chemins acceptent l'alias 'downloads' / 'téléchargements' (= ~/Downloads).",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        from: {
+          type: STRING,
+          description:
+            "Chemin du fichier ou dossier à déplacer (absolu, ou relatif à la racine locale).",
+        },
+        to: {
+          type: STRING,
+          description:
+            "Destination : chemin du fichier renommé, ou dossier où déplacer (absolu ou relatif à la racine).",
+        },
+        confirmed: {
+          type: "boolean",
+          description:
+            "À passer à true uniquement si l'utilisateur a explicitement confirmé l'écrasement d'un fichier/dossier existant à la destination.",
+        },
+      },
+    },
+  },
+
+  async execute(args = {}) {
+    return moveLocalFile(args.from, args.to, {
+      confirmed: args.confirmed,
+    });
+  },
+};
+
+
 const file_downloadTool = {
   declaration: {
     name: "file_download",
@@ -474,5 +510,6 @@ export const filesTools = [
   file_readTool,
   file_writeTool,
   file_mkdirTool,
+  file_moveTool,
   file_downloadTool,
 ];

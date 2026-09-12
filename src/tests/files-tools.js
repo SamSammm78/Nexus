@@ -64,9 +64,9 @@ const tools = await import(
   "../tools/files.js"
 );
 
-const { searchLocalFiles, listLocalFolder, readLocalFile } = local;
+const { searchLocalFiles, listLocalFolder, readLocalFile, moveLocalFile } = local;
 const { getFilesSettings, setFilesRoot, setFilesPriority, resolveRoot } = settings;
-const [file_searchTool, file_listTool, file_readTool, file_writeTool, file_mkdirTool, file_downloadTool] = tools.filesTools;
+const [file_searchTool, file_listTool, file_readTool, file_writeTool, file_mkdirTool, file_moveTool, file_downloadTool] = tools.filesTools;
 
 function startTestServer(payloadOrOpts) {
   const opts =
@@ -370,6 +370,126 @@ test("file_mkdir : chemin manquant refusé", async () => {
   await assert.rejects(
     () => file_mkdirTool.execute({}),
     /Chemin/
+  );
+});
+
+test("file_move : déplace un fichier dans un dossier", async () => {
+  fs.writeFileSync(
+    path.join(TMP, "Documents", "a-deplacer.txt"),
+    "contenu"
+  );
+
+  const result = await file_moveTool.execute({
+    from: "a-deplacer.txt",
+    to: "TD",
+  });
+
+  assert.equal(result.moved, true);
+  assert.ok(result.to.endsWith("TD/a-deplacer.txt"));
+  assert.equal(
+    fs.existsSync(path.join(TMP, "Documents", "a-deplacer.txt")),
+    false
+  );
+  assert.equal(
+    fs.existsSync(path.join(TMP, "Documents", "TD", "a-deplacer.txt")),
+    true
+  );
+});
+
+test("file_move : renomme un fichier (même dossier)", async () => {
+  fs.writeFileSync(
+    path.join(TMP, "Documents", "a-renommer.txt"),
+    "contenu"
+  );
+
+  const result = await file_moveTool.execute({
+    from: "a-renommer.txt",
+    to: "renomme.txt",
+  });
+
+  assert.ok(result.to.endsWith("renomme.txt"));
+  assert.equal(
+    fs.existsSync(path.join(TMP, "Documents", "a-renommer.txt")),
+    false
+  );
+});
+
+test("file_move : écrasement d'une destination existante exige confirmation", async () => {
+  fs.writeFileSync(
+    path.join(TMP, "Documents", "src-conf.txt"),
+    "original"
+  );
+  fs.writeFileSync(
+    path.join(TMP, "Documents", "dest-conf.txt"),
+    "existant"
+  );
+
+  await assert.rejects(
+    () => file_moveTool.execute({
+      from: "src-conf.txt",
+      to: "dest-conf.txt",
+    }),
+    /confirmation|confirme/
+  );
+
+  await file_moveTool.execute({
+    from: "src-conf.txt",
+    to: "dest-conf.txt",
+    confirmed: true,
+  });
+
+  assert.equal(
+    fs.existsSync(path.join(TMP, "Documents", "src-conf.txt")),
+    false
+  );
+});
+
+test("file_move : source introuvable refusée", async () => {
+  await assert.rejects(
+    () => file_moveTool.execute({
+      from: "totalement-inexistant.txt",
+      to: "TD",
+    }),
+    /introuvable/
+  );
+});
+
+test("file_move : source et destination identiques refusées", async () => {
+  fs.writeFileSync(
+    path.join(TMP, "Documents", "identique.txt"),
+    "x"
+  );
+
+  await assert.rejects(
+    () => file_moveTool.execute({
+      from: "identique.txt",
+      to: "identique.txt",
+    }),
+    /identiques/
+  );
+});
+
+test("moveLocalFile : déplacer avec chevauchement dans downloadDir via alias", async () => {
+  fs.mkdirSync(TMP_DOWNLOADS, { recursive: true });
+
+  fs.writeFileSync(
+    path.join(TMP_DOWNLOADS, "alias-move.txt"),
+    "contenu"
+  );
+
+  const result = moveLocalFile(
+    "downloads/alias-move.txt",
+    "cours/move-result.txt"
+  );
+
+  assert.ok(result.to.endsWith("cours/move-result.txt"));
+  assert.equal(
+    fs.existsSync(path.join(TMP, "Documents", "cours", "move-result.txt")),
+    true
+  );
+  assert.equal(
+    fs.existsSync(path.join(TMP_DOWNLOADS, "alias-move.txt")),
+    false
   );
 });
 

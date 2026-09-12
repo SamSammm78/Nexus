@@ -220,6 +220,7 @@ function getToolsForRoute(route) {
         getNativeDeclaration("file_read"),
         getNativeDeclaration("file_write"),
         getNativeDeclaration("file_mkdir"),
+        getNativeDeclaration("file_move"),
         getNativeDeclaration("file_download"),
       ].filter(Boolean).concat(memoryDeclarations);
 
