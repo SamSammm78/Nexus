@@ -344,6 +344,66 @@ export function localFileExists(targetPath) {
   return existsSync(resolveLocalPath(targetPath));
 }
 
+export function copyLocalFile(
+  sourcePath,
+  targetPath,
+  { confirmed = false } = {}
+) {
+  if (!sourcePath || !targetPath) {
+    throw new Error(
+      "Chemin source et destination requis."
+    );
+  }
+
+  const from = resolveLocalPath(sourcePath);
+  let to = resolveLocalPath(targetPath);
+
+  if (!existsSync(from)) {
+    throw new Error(
+      `Fichier ou dossier introuvable : ${from}`
+    );
+  }
+
+  // Destination = dossier existant → on copie DANS ce dossier en
+  // conservant le nom du fichier.
+  if (existsSync(to) && lstatSync(to).isDirectory()) {
+    to = join(
+      to,
+      from.split("/").pop()
+    );
+  }
+
+  if (resolve(from) === resolve(to)) {
+    throw new Error(
+      "Source et destination sont identiques : rien à copier."
+    );
+  }
+
+  if (existsSync(to) && confirmed !== true) {
+    throw new Error(
+      `Un fichier ou dossier existe déjà à la destination (${to}) : demande confirmation explicite puis relance avec confirmed: true pour l'écraser.`
+    );
+  }
+
+  mkdirSync(dirname(to), { recursive: true });
+
+  if (existsSync(to)) {
+    rmSync(to, { recursive: true, force: true });
+  }
+
+  cpSync(from, to, { recursive: true });
+
+  const stats = statSync(to);
+
+  return {
+    from,
+    to: resolve(to),
+    copied: true,
+    size: stats.isDirectory() ? null : stats.size,
+    isDir: stats.isDirectory(),
+  };
+}
+
 export function moveLocalFile(
   sourcePath,
   targetPath,

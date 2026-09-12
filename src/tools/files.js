@@ -6,6 +6,7 @@ import {
   readLocalFile,
   writeLocalFile,
   createLocalFolder,
+  copyLocalFile,
   moveLocalFile,
   localFileExists,
 } from "../services/files/local.js";
@@ -386,6 +387,41 @@ const file_mkdirTool = {
 };
 
 
+const file_copyTool = {
+  declaration: {
+    name: "file_copy",
+    description:
+      "COPIE un fichier ou dossier (local) vers une destination — L'ORIGINAL reste en place (contrairement à file_move). Destination = dossier existant → copie dedans en gardant le nom. L'écrasement d'une destination existante nécessite une confirmation explicite (confirmed: true). Les chemins acceptent l'alias 'downloads' / 'téléchargements' (= ~/Downloads).",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        from: {
+          type: STRING,
+          description:
+            "Chemin du fichier ou dossier à copier (absolu, ou relatif à la racine locale).",
+        },
+        to: {
+          type: STRING,
+          description:
+            "Destination : chemin du fichier copié, ou dossier où copier (absolu ou relatif à la racine).",
+        },
+        confirmed: {
+          type: "boolean",
+          description:
+            "À passer à true uniquement si l'utilisateur a explicitement confirmé l'écrasement d'un fichier/dossier existant à la destination.",
+        },
+      },
+    },
+  },
+
+  async execute(args = {}) {
+    return copyLocalFile(args.from, args.to, {
+      confirmed: args.confirmed,
+    });
+  },
+};
+
+
 const file_moveTool = {
   declaration: {
     name: "file_move",
@@ -511,5 +547,6 @@ export const filesTools = [
   file_writeTool,
   file_mkdirTool,
   file_moveTool,
+  file_copyTool,
   file_downloadTool,
 ];

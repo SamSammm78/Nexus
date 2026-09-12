@@ -64,9 +64,9 @@ const tools = await import(
   "../tools/files.js"
 );
 
-const { searchLocalFiles, listLocalFolder, readLocalFile, moveLocalFile } = local;
+const { searchLocalFiles, listLocalFolder, readLocalFile, moveLocalFile, copyLocalFile } = local;
 const { getFilesSettings, setFilesRoot, setFilesPriority, resolveRoot } = settings;
-const [file_searchTool, file_listTool, file_readTool, file_writeTool, file_mkdirTool, file_moveTool, file_downloadTool] = tools.filesTools;
+const [file_searchTool, file_listTool, file_readTool, file_writeTool, file_mkdirTool, file_moveTool, file_copyTool, file_downloadTool] = tools.filesTools;
 
 function startTestServer(payloadOrOpts) {
   const opts =
@@ -490,6 +490,133 @@ test("moveLocalFile : déplacer avec chevauchement dans downloadDir via alias", 
   assert.equal(
     fs.existsSync(path.join(TMP_DOWNLOADS, "alias-move.txt")),
     false
+  );
+});
+
+test("file_copy : copie un fichier dans un dossier, original conservé", async () => {
+  fs.writeFileSync(
+    path.join(TMP, "Documents", "a-copier.txt"),
+    "contenu"
+  );
+
+  const result = await file_copyTool.execute({
+    from: "a-copier.txt",
+    to: "TD",
+  });
+
+  assert.equal(result.copied, true);
+  assert.ok(result.to.endsWith("TD/a-copier.txt"));
+  assert.equal(
+    fs.existsSync(path.join(TMP, "Documents", "a-copier.txt")),
+    true
+  );
+  assert.equal(
+    fs.existsSync(path.join(TMP, "Documents", "TD", "a-copier.txt")),
+    true
+  );
+});
+
+test("file_copy : copie vers un nom précis", async () => {
+  fs.writeFileSync(
+    path.join(TMP, "Documents", "src-copy.txt"),
+    "contenu"
+  );
+
+  const result = await file_copyTool.execute({
+    from: "src-copy.txt",
+    to: "copie-resultat.txt",
+  });
+
+  assert.ok(result.to.endsWith("copie-resultat.txt"));
+  assert.equal(
+    fs.existsSync(path.join(TMP, "Documents", "src-copy.txt")),
+    true
+  );
+  assert.equal(
+    fs.existsSync(path.join(TMP, "Documents", "copie-resultat.txt")),
+    true
+  );
+});
+
+test("file_copy : copie récursive d'un dossier", async () => {
+  fs.mkdirSync(path.join(TMP, "Documents", "dossier-src", "sous"), {
+    recursive: true,
+  });
+  fs.writeFileSync(
+    path.join(TMP, "Documents", "dossier-src", "sous", "f.txt"),
+    "x"
+  );
+
+  const result = await file_copyTool.execute({
+    from: "dossier-src",
+    to: "dossier-copie",
+  });
+
+  assert.equal(result.isDir, true);
+  assert.equal(
+    fs.readFileSync(
+      path.join(TMP, "Documents", "dossier-copie", "sous", "f.txt"),
+      "utf8"
+    ),
+    "x"
+  );
+});
+
+test("file_copy : écrasement d'une destination existante exige confirmation", async () => {
+  fs.writeFileSync(
+    path.join(TMP, "Documents", "src-copy-conf.txt"),
+    "original"
+  );
+  fs.writeFileSync(
+    path.join(TMP, "Documents", "dest-copy-conf.txt"),
+    "existant"
+  );
+
+  await assert.rejects(
+    () => file_copyTool.execute({
+      from: "src-copy-conf.txt",
+      to: "dest-copy-conf.txt",
+    }),
+    /confirmation|confirme/
+  );
+
+  await file_copyTool.execute({
+    from: "src-copy-conf.txt",
+    to: "dest-copy-conf.txt",
+    confirmed: true,
+  });
+
+  assert.equal(
+    fs.readFileSync(
+      path.join(TMP, "Documents", "dest-copy-conf.txt"),
+      "utf8"
+    ),
+    "original"
+  );
+});
+
+test("file_copy : source introuvable refusée", async () => {
+  await assert.rejects(
+    () => file_copyTool.execute({
+      from: "totalement-inexistant.txt",
+      to: "TD",
+    }),
+    /introuvable/
+  );
+});
+
+test("file_copy : source et destination identiques refusées", async () => {
+  fs.writeFileSync(
+    path.join(TMP, "Documents", "identique-copy.txt"),
+    "x"
+  );
+
+  await assert.rejects(
+    () => file_copyTool.execute({
+      from: "identique-copy.txt",
+      to: "identique-copy.txt",
+    }),
+    /identiques/
   );
 });
 

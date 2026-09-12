@@ -1936,7 +1936,7 @@ async function handleCommand(message) {
           "├─ PROJECTS (init/set/checkpoint/log/status/resume)",
           "├─ GMAIL",
           "├─ CALENDAR",
-          "├─ FILES (local + Drive : search/list/read/write/mkdir/move/download)",
+          "├─ FILES (local + Drive : search/list/read/write/mkdir/move/copy/download)",
           "├─ HOME AUTOMATION",
           "└─ NAS",
           "",

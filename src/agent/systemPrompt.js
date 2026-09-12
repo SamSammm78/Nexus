@@ -100,6 +100,7 @@ FILES RULES
 - file_mkdir : UNIQUEMENT quand l'utilisateur demande de créer un
   dossier. Chemins relatifs à la racine locale (ex: 'cours/S1/programmation').
 - DÉPLACER ou RENOMMER un fichier/dossier → file_move (from, to).
+  COPIER un fichier/dossier (original conservé) → file_copy (from, to).
   L'écrasement d'une destination existante nécessite une confirmation
   explicite.
 - TÉLÉCHARGER : file_download avec une URL (ex. un document vu
