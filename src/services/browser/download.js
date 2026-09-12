@@ -185,8 +185,16 @@ async function clearSharedContext() {
 }
 
 export async function closeDownloadBrowser() {
+  interactiveSession = false;
+
   await clearSharedContext();
 }
+
+// Une fois qu'on est passé en mode interactif (connexion demandée), la
+// fenêtre Chrome ouverte RESTE ouverte : les téléchargements suivants
+// réutilisent la même fenêtre/profil, sans fermer/rouvrir (plus de
+// page about:blank répétée).
+let interactiveSession = false;
 
 async function refreshCookieJar(context) {
   try {
@@ -299,26 +307,29 @@ async function captureDownload({
   });
 }
 
-// Repli interactif : ouvre une fenêtre Chrome visible (même profil
-// persistant) sur l'URL bloquée pour laisser l'utilisateur se connecter.
-// Une fois connecté, on capture le téléchargement ou on surveille les
-// clics de l'utilisateur. Les cookies sont exportés en continu.
+// Repli interactif : utilise (ou ouvre) UNE SEULE fenêtre Chrome visible,
+// sur le profil persistant. La fenêtre n'est JAMAIS fermée après usage :
+// les téléchargements suivants réutilisent la même fenêtre/onglet.
 async function buildSessionInteractively({
   url,
   folder,
   filename,
   confirmed,
   timeoutMs,
-  loginWaitMs = 3 * 60_000,
+  loginWaitMs = 60_000,
 }) {
+  const firstTime = !interactiveSession;
+
+  interactiveSession = true;
+
   const context = await sharedContext(false);
 
   const page = await sharedPage(context);
 
-  await page.goto(url, {
-    waitUntil: "committed",
-    timeout: timeoutMs,
-  }).catch(() => {});
+  const downloadEvent =
+    page.waitForEvent("download")
+      .then((d) => d)
+      .catch(() => null);
 
   const cookieTimer = setInterval(() => {
     refreshCookieJar(context);
@@ -327,20 +338,62 @@ async function buildSessionInteractively({
   let download = null;
 
   try {
-    download = await Promise.race([
-      page.waitForEvent("download")
-        .then((d) => d)
-        .catch(() => null),
-      new Promise((resolve) =>
-        setTimeout(() => resolve(null), loginWaitMs)
-      ),
-    ]);
+    await page.goto(url, {
+      waitUntil: "domcontentloaded",
+      timeout: timeoutMs,
+    }).catch(() => {});
+
+    const start = Date.now();
+
+    while (Date.now() - start < loginWaitMs) {
+      download =
+        await Promise.race([
+          downloadEvent,
+          new Promise((resolve) =>
+            setTimeout(() => resolve(null), 2_000)
+          ),
+        ]);
+
+      if (download) {
+        break;
+      }
+
+      const current = page.url();
+      const isBlank =
+        !current ||
+        current === "about:blank" ||
+        current === "about:srcdoc";
+
+      // Fenêtre restée vide : l'URL est un téléchargement direct (pas de
+      // page à afficher). On arrête vite pour un message clair plutôt
+      // qu'une attente silencieuse.
+      if (isBlank && Date.now() - start > 15_000) {
+        break;
+      }
+    }
 
     if (!download) {
+      const isBlank =
+        !page.url() ||
+        page.url() === "about:blank" ||
+        page.url() === "about:srcdoc";
+
+      const urlDetail =
+        isBlank
+          ? `l'URL (${url}) déclenche un téléchargement direct`
+          : `la page ${url}`;
+
       throw new Error(
-        "Aucun téléchargement après connexion : connecte-toi sur la page " +
-        "ouverte, déclenche la récupération du fichier, puis relance le " +
-        "téléchargement. La session est maintenant enregistrée."
+        isBlank
+          ? `Aucun fichier récupéré : ${urlDetail}. Une fenêtre Chrome NEXUS ` +
+            "reste ouverte (elle ne se referme pas seule) : si rien ne s'est " +
+            "téléchargé, connecte-toi sur ton site dans cette fenêtre puis " +
+            "relance le téléchargement."
+          : `${firstTime ? "Connexion requise" : "Aucun téléchargement déclenché"} : ` +
+            `${urlDetail} est affiché dans une fenêtre Chrome NEXUS qui reste ` +
+            "ouverte. Connecte-toi ou déclenche la récupération du fichier " +
+            "dans cette fenêtre, puis relance le téléchargement — la session " +
+            "sera mémorisée."
       );
     }
 
@@ -416,6 +469,19 @@ export async function downloadViaBrowser({
     throw new Error("URL manquante.");
   }
 
+  // Session déjà active (fenêtre Chrome ouverte) : on réutilise DIRECTEMENT
+  // la même fenêtre, sans tentative silencieuse ni fermeture.
+  if (interactiveSession) {
+    return buildSessionInteractively({
+      url,
+      folder,
+      filename,
+      confirmed,
+      timeoutMs,
+      loginWaitMs,
+    });
+  }
+
   // 1) Tentative rapide : profil persistant en mode silencieux.
   //    Si l'utilisateur est déjà connecté (cookies préservés), c'est fait.
   const headlessContext =
@@ -442,9 +508,10 @@ export async function downloadViaBrowser({
     }
   }
 
-  // 2) Le site exige une session : on ouvre la même URL en fenêtre
-  //    visible pour que l'utilisateur se connecte (une seule fois, les
-  //    cookies sont ensuite mémorisés).
+  // 2) Le site exige une session : on ouvre (ou réutilise) UNE fenêtre
+  //    Chrome visible sur le profil persistant pour que l'utilisateur se
+  //    connecte. Cette fenêtre reste ouverte pour les téléchargements
+  //    suivants.
   if (process.env.NEXUS_FILES_NO_INTERACTIVE === "1") {
     const error = new Error(
       "Le site demande une connexion (mode automatique désactivé, " +
