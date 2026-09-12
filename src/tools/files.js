@@ -21,14 +21,6 @@ import {
   getFilesSettings,
 } from "../services/files/settings.js";
 
-import {
-  downloadUrl,
-} from "../services/files/download.js";
-
-import {
-  downloadViaBrowser,
-} from "../services/browser/download.js";
-
 
 const STRING = Type.STRING;
 const NUMBER = Type.NUMBER;
@@ -456,102 +448,6 @@ const file_moveTool = {
   },
 };
 
-
-const file_downloadTool = {
-  declaration: {
-    name: "file_download",
-    description:
-      "Télécharge un fichier depuis une URL (HTTP/HTTPS) vers l'espace de fichiers local (dossier 'downloads' par défaut). En browser:true, télécharge via un vrai navigateur avec un profil persistant : si le site demande une connexion (compte étudiant, etc.), une fenêtre Chrome s'ouvre pour que l'utilisateur se connecte — la session (cookies) est ensuite mémorisée et réutilisée pour des téléchargements rapides et authentifiés. Le fichier est validé : si le serveur renvoie une page HTML ou un fichier corrompu, l'outil l'indique. Confirmation requise si le fichier est volumineux ou si un fichier du même nom existe déjà.",
-    parameters: {
-      type: Type.OBJECT,
-      properties: {
-        url: {
-          type: STRING,
-          description:
-            "URL du fichier à télécharger.",
-        },
-        browser: {
-          type: "boolean",
-          description:
-            "true pour télécharger via un vrai navigateur (recommandé si le site demande une session ou si l'utilisateur a ouvert le site dans le navigateur). Défaut : false (HTTP direct, avec session automatique si déjà connecté).",
-        },
-        folder: {
-          type: STRING,
-          description:
-            "Dossier de destination (relatif à la racine ou absolu). Défaut : 'downloads'.",
-        },
-        filename: {
-          type: STRING,
-          description:
-            "Nom de fichier à enregistrer (défaut : dérivé de l'URL ou du site).",
-        },
-        interactive: {
-          type: "boolean",
-          description:
-            "false pour ne jamais ouvrir la fenêtre de connexion et échouer immédiatement si le site exige une session. Défaut : true.",
-        },
-        confirmed: {
-          type: "boolean",
-          description:
-            "À passer à true uniquement si l'utilisateur a explicitement confirmé (écrasement d'un fichier existant ou téléchargement volumineux).",
-        },
-      },
-    },
-  },
-
-  async execute(args = {}) {
-    if (args.browser) {
-      const result = await downloadViaBrowser({
-        url: args.url,
-        folder: args.folder,
-        filename: args.filename,
-        confirmed: args.confirmed,
-        interactive: args.interactive,
-      });
-
-      const gainedSession =
-        result.gainedSession ? true : false;
-
-      return { ...result, via: "browser", gainedSession };
-    }
-
-    try {
-      const result = await downloadUrl({
-        url: args.url,
-        folder: args.folder,
-        filename: args.filename,
-        confirmed: args.confirmed,
-      });
-
-      return { ...result, via: "http" };
-    } catch (error) {
-      const invalid =
-        error?.code === "INVALID_DOWNLOAD" ||
-        /HTML|html/i.test(String(error?.message));
-
-      if (
-        invalid &&
-        process.env.NEXUS_FILES_NO_BROWSER !== "1"
-      ) {
-        const result = await downloadViaBrowser({
-          url: args.url,
-          folder: args.folder,
-          filename: args.filename,
-          confirmed: args.confirmed,
-          interactive: args.interactive,
-        });
-
-        return { ...result, via: "browser", retriedAfter: "http" };
-      }
-
-      throw error;
-    }
-  },
-};
-
-
-export { file_downloadTool };
-
 export const filesTools = [
   file_searchTool,
   file_listTool,
@@ -560,5 +456,4 @@ export const filesTools = [
   file_mkdirTool,
   file_moveTool,
   file_copyTool,
-  file_downloadTool,
 ];

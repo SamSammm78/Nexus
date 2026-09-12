@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 import os from "node:os";
 import path from "node:path";
 import fs from "node:fs";
-import http from "node:http";
 
 const TMP = fs.mkdtempSync(
   path.join(os.tmpdir(), "nexus-files-")
@@ -17,12 +16,6 @@ process.env.NEXUS_FILES_ROOT =
 
 process.env.NEXUS_FILES_DOWNLOAD_DIR =
   path.join(TMP, "Documents", "downloads");
-
-process.env.NEXUS_FILES_BROWSER_PROFILE =
-  path.join(TMP, "chrome-profile");
-
-process.env.NEXUS_FILES_COOKIE_JAR =
-  path.join(TMP, "cookies.txt");
 
 const TMP_DOWNLOADS =
   process.env.NEXUS_FILES_DOWNLOAD_DIR;
@@ -58,10 +51,6 @@ const settings = await import(
   "../services/files/settings.js"
 );
 
-const { closeDownloadBrowser } = await import(
-  "../services/browser/download.js"
-);
-
 const local = await import(
   "../services/files/local.js"
 );
@@ -72,39 +61,7 @@ const tools = await import(
 
 const { searchLocalFiles, listLocalFolder, readLocalFile, moveLocalFile, copyLocalFile } = local;
 const { getFilesSettings, setFilesRoot, setFilesPriority, resolveRoot } = settings;
-const [file_searchTool, file_listTool, file_readTool, file_writeTool, file_mkdirTool, file_moveTool, file_copyTool, file_downloadTool] = tools.filesTools;
-
-function startTestServer(payloadOrOpts) {
-  const opts =
-    typeof payloadOrOpts === "object" &&
-    !Buffer.isBuffer(payloadOrOpts)
-      ? payloadOrOpts
-      : { payload: payloadOrOpts };
-
-  const body = Buffer.isBuffer(opts.payload)
-    ? opts.payload
-    : Buffer.from(opts.payload ?? "bonjour");
-
-  const server = http.createServer((req, res) => {
-    res.writeHead(200, {
-      "content-type": opts.contentType ?? "text/plain",
-      "content-length": String(body.length),
-      ...(opts.headers ?? {}),
-    });
-
-    res.end(body);
-  });
-
-  return new Promise((resolveServer) => {
-    server.listen(0, "127.0.0.1", () => {
-      resolveServer({
-        url:
-          `http://127.0.0.1:${server.address().port}/doc.pdf`,
-        close: () => new Promise((r) => server.close(r)),
-      });
-    });
-  });
-}
+const [file_searchTool, file_listTool, file_readTool, file_writeTool, file_mkdirTool, file_moveTool, file_copyTool] = tools.filesTools;
 
 test("settings : racine + priorité locale par défaut", () => {
   const { root, sourcePriority } = getFilesSettings();
@@ -624,221 +581,4 @@ test("file_copy : source et destination identiques refusées", async () => {
     }),
     /identiques/
   );
-});
-
-test("file_download : télécharge une URL dans downloads/", async () => {
-  const server = await startTestServer("%PDF-1.4\ncontenu du fichier");
-
-  try {
-    const result = await file_downloadTool.execute({
-      url: server.url,
-    });
-
-    assert.equal(result.name, "doc.pdf");
-    assert.ok(result.folder.endsWith("downloads"));
-    assert.equal(result.size, "%PDF-1.4\ncontenu du fichier".length);
-
-    const content = fs.readFileSync(result.path, "utf8");
-
-    assert.ok(content.startsWith("%PDF-"));
-  } finally {
-    await server.close();
-  }
-});
-
-test("file_download : écrase un fichier existant seulement après confirmation", async () => {
-  const server = await startTestServer("%PDF-1.4\nversion 2");
-
-  const existingDir = path.join(TMP, "Documents", "downloads");
-
-  fs.mkdirSync(existingDir, { recursive: true });
-  fs.writeFileSync(path.join(existingDir, "doc.pdf"), "ancien");
-
-  try {
-    await assert.rejects(
-      () => file_downloadTool.execute({ url: server.url }),
-      /confirmation|confirme/
-    );
-
-    const result = await file_downloadTool.execute({
-      url: server.url,
-      confirmed: true,
-    });
-
-    assert.ok(fs.readFileSync(result.path, "utf8").startsWith("%PDF-"));
-  } finally {
-    await server.close();
-  }
-});
-
-test("file_download : page HTML renvoyée → rejetée sans fichier corrompu", async () => {
-  const server = await startTestServer({
-    payload: "<html><body>page de connexion</body></html>",
-    contentType: "text/html",
-  });
-
-  process.env.NEXUS_FILES_NO_BROWSER = "1";
-
-  try {
-    await assert.rejects(
-      () => file_downloadTool.execute({
-        url: server.url,
-        filename: "html-test.pdf",
-      }),
-      /HTML|html|browser/
-    );
-
-    assert.equal(
-      fs.existsSync(path.join(TMP, "Documents", "downloads", "html-test.pdf")),
-      false
-    );
-  } finally {
-    delete process.env.NEXUS_FILES_NO_BROWSER;
-    await server.close();
-  }
-});
-
-test("file_download : contenu non conforme → rejeté (fichier cassé)", async () => {
-  const server = await startTestServer({
-    payload: "ceci nest pas un pdf",
-    contentType: "application/pdf",
-  });
-
-  process.env.NEXUS_FILES_NO_BROWSER = "1";
-
-  try {
-    await assert.rejects(
-      () => file_downloadTool.execute({
-        url: server.url,
-        filename: "corrupt-test.pdf",
-      }),
-      /ne correspond|HTML|browser/
-    );
-
-    assert.equal(
-      fs.existsSync(path.join(TMP, "Documents", "downloads", "corrupt-test.pdf")),
-      false
-    );
-  } finally {
-    delete process.env.NEXUS_FILES_NO_BROWSER;
-    await server.close();
-  }
-});
-
-test("file_download : gros fichier exige confirmation", async () => {
-  process.env.NEXUS_FILES_DOWNLOAD_BIG = "4";
-  process.env.NEXUS_FILES_DOWNLOAD_MAX = "1024";
-
-  const server = await startTestServer(
-    Buffer.concat([
-      Buffer.from("%PDF-1.4\n"),
-      Buffer.alloc(56, 32),
-    ])
-  );
-
-  try {
-    await assert.rejects(
-      () => file_downloadTool.execute({ url: server.url }),
-      /confirmation|confirme/
-    );
-
-    const result = await file_downloadTool.execute({
-      url: server.url,
-      confirmed: true,
-    });
-
-    assert.ok(result.size >= 64);
-  } finally {
-    await server.close();
-
-    delete process.env.NEXUS_FILES_DOWNLOAD_BIG;
-    delete process.env.NEXUS_FILES_DOWNLOAD_MAX;
-  }
-});
-
-test("file_download : protocole non autorisé refusé", async () => {
-  await assert.rejects(
-    () => file_downloadTool.execute({ url: "file:///etc/passwd" }),
-    /Protocole/
-  );
-});
-
-test("file_download : curl authentifié réutilise le cookie jar", async () => {
-  const jar = process.env.NEXUS_FILES_COOKIE_JAR;
-
-  fs.writeFileSync(
-    jar,
-    [
-      "# NEXUS cookie jar",
-      "127.0.0.1\tFALSE\t/\tFALSE\t0\tsid\tabc123",
-      "",
-    ].join("\n")
-  );
-
-  const server = await startTestServer({
-    payload: "%PDF-1.4\nvia-curl",
-    headers: {
-      "content-disposition": 'attachment; filename="cookies.pdf"',
-    },
-  });
-
-  try {
-    const result = await file_downloadTool.execute({
-      url: server.url,
-      filename: "cookies.pdf",
-    });
-
-    assert.equal(result.name, "cookies.pdf");
-    assert.ok(fs.readFileSync(result.path, "utf8").startsWith("%PDF-"));
-  } finally {
-    await server.close();
-    fs.rmSync(jar, { force: true });
-  }
-});
-
-test("file_download : mode navigateur (Playwright) avec session JS", async (t) => {
-  const server = await startTestServer({
-    payload: "%PDF-1.4\nProduit par le navigateur",
-    headers: {
-      "content-disposition": 'attachment; filename="doc.pdf"',
-    },
-  });
-
-  try {
-    let result;
-
-    try {
-      result = await file_downloadTool.execute({
-        url: server.url,
-        filename: "browser-test.pdf",
-        browser: true,
-      });
-    } catch (error) {
-      if (
-        /Executable doesn't exist|browser.*not found|playwright|ENOENT/i.test(
-          String(error?.message)
-        )
-      ) {
-        t.skip(`Navigateur indisponible en test : ${error.message}`);
-        return;
-      }
-
-      throw error;
-    }
-
-    assert.equal(result.name, "browser-test.pdf");
-    assert.ok(fs.readFileSync(result.path, "utf8").startsWith("%PDF-"));
-
-    const overwrittenResult = await file_downloadTool.execute({
-      url: server.url,
-      filename: "browser-test.pdf",
-      browser: true,
-      confirmed: true,
-    });
-
-    assert.ok(fs.readFileSync(overwrittenResult.path, "utf8").startsWith("%PDF-"));
-  } finally {
-    await server.close();
-    await closeDownloadBrowser();
-  }
 });

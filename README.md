@@ -457,7 +457,7 @@ et Google Drive, avec **le LOCAL en source prioritaire**
 src/services/files/settings.js   → racine + priorité (data/files-config.json)
 src/services/files/local.js      → recherche / list / lecture disque
 src/services/google/drive.js     → recherche / list / lecture Google Drive
-src/tools/files.js               → file_search / file_list / file_read / file_write / file_mkdir / file_move / file_copy / file_download
+src/tools/files.js               → file_search / file_list / file_read / file_write / file_mkdir / file_move / file_copy
 ```
 
 - `file_search` : recherche par nom, source `auto` = source prioritaire
@@ -483,30 +483,12 @@ src/tools/files.js               → file_search / file_list / file_read / file_
 - `file_copy` : copie un fichier/dossier (l'original reste en place).
   Destination = dossier existant → copie dedans. Écrasement d'une
   destination existante soumis à confirmation explicite.
-- `file_download` : télécharge une URL vers le dossier **Téléchargements**
-  de l'utilisateur (`~/Downloads`). D'abord en mode HTTP direct (rapide) ;
-  si le serveur renvoie une page HTML ou un fichier invalide, l'outil
-  **retente automatiquement** via le navigateur. `browser: true` force le
-  navigateur.
-- **Session persistante (comptes étudiants, etc.)** : NEXUS utilise un
-  profil Chrome persistant (`~/.nexus/chrome-profile`, surchargeable par
-  `NEXUS_FILES_BROWSER_PROFILE`). Si un site exige une connexion, une
-  fenêtre Chrome visible s'ouvre pour vous connecter **une seule fois** ;
-  les cookies sont conservés et réutilisés ensuite (exportés dans
-  `~/.nexus/cookies.txt`, surchargeable par `NEXUS_FILES_COOKIE_JAR`).
-  Les téléchargements suivants de ce site passent alors par `curl` avec
-  vos cookies : **authentifiés et quasi instantanés**, sans navigateur.
-  Le fichier est validé (magic bytes) : page HTML / fichier corrompu →
-  refusé. Confirmation pour l'écrasement ou les gros fichiers.
-  CLI : `/download <url> [dossier]` et `/files downloaddir <chemin>` pour
-  changer le dossier de destination.
 - Drive est branché sur le même OAuth que Gmail/Calendar
   (scope supplémentaire `drive.readonly` — voir re-autorisation ci-dessous).
 - Config : `data/files-config.json` (`root`, `sourcePriority`), surchargée
   par `NEXUS_FILES_ROOT`. Env préfixé : `NEXUS_FILES_CONFIG`.
 - CLI : `/files` (statut), `/files root <chemin>`, `/files priority <local|drive>`,
-  `/files downloaddir <chemin>`, `/files pending` (fichiers en attente d'envoi),
-  `/download <url> [dossier]`.
+  `/files downloaddir <chemin>`, `/files pending` (fichiers en attente d'envoi).
 
 ### Re-autorisation Google pour le scope Drive
 
@@ -1265,7 +1247,7 @@ Avoid infinite retry loops.
    - file_search : recherche unifiée locale + Drive avec repli automatique
    - file_list / file_read : navigation + lecture texte / binaire / images+PDF
    - file_write / file_mkdir : création fichiers + dossiers (confirmation écrasement)
-   - file_download : téléchargement d'URL (navigateur / Playwright) avec confirmation
+   - file_move / file_copy : déplacer / copier fichiers et dossiers (confirmation écrasement)
    - route FILES (router), disponible aussi sur NATIVE/BROWSER
    - configuration : racine locale, priorité local / drive, CLI /files
 

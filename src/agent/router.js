@@ -89,9 +89,6 @@ Exemples :
 - clique sur ce bouton
 - remplis ce formulaire
 - connecte-toi à ce site
-- télécharge ce document depuis ce site
-  (file_download : récupère l'URL de téléchargement
-  puis enregistre le fichier localement)
 
 
 NATIVE

@@ -143,7 +143,6 @@ function getToolsForRoute(route) {
 
     case "BROWSER":
       return playwrightDeclarations
-        .concat(getNativeDeclaration("file_download"))
         .concat(memoryDeclarations)
         .filter(Boolean);
 
@@ -222,7 +221,6 @@ function getToolsForRoute(route) {
         getNativeDeclaration("file_mkdir"),
         getNativeDeclaration("file_move"),
         getNativeDeclaration("file_copy"),
-        getNativeDeclaration("file_download"),
       ].filter(Boolean).concat(memoryDeclarations);
 
     case "DIRECT":

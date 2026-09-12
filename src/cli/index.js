@@ -29,18 +29,6 @@ import {
   setFilesDownloadDir,
 } from "../services/files/settings.js";
 
-import {
-  file_downloadTool,
-} from "../tools/files.js";
-
-import {
-  cookieJarReady,
-} from "../services/browser/profiles.js";
-
-import {
-  closeDownloadBrowser,
-} from "../services/browser/download.js";
-
 // ============================================================
 // FILES
 // ============================================================
@@ -1576,70 +1564,17 @@ async function handleCommand(message) {
 
       const { root, sourcePriority, downloadDir } = getFilesSettings();
 
-      const sessionStatus = cookieJarReady()
-        ? `${COLORS.green}SESSION ACTIVE{/} (cookies de connexion enregistrés)`
-        : `${COLORS.muted}Aucune session enregistrée : le premier téléchargement d'un site protégé ouvrira Chrome pour se connecter.{/}`;
-
       addNexusMessage(
         [
           "FICHIERS",
           "",
           `Racine locale : {${COLORS.cyan}-fg}${root}{/}`,
           `Source prioritaire : {${COLORS.cyan}-fg}${sourcePriority === "local" ? "LOCAL (disque)" : "GOOGLE DRIVE"}{/}`,
-          `Téléchargements : {${COLORS.cyan}-fg}${downloadDir}{/}`,
-          `Session : ${sessionStatus}`,
+          `Dossier « téléchargements » (alias downloads) : {${COLORS.cyan}-fg}${downloadDir}{/}`,
           "",
           "Commandes : /files root <chemin> · /files priority <local|drive> · /files downloaddir <chemin> · /files pending",
         ].join("\n")
       );
-      break;
-    }
-
-    case "/download": {
-      const url = args[0];
-      const folder = args[1];
-
-      if (!/^https?:\/\//i.test(url ?? "")) {
-        addNexusMessage("Usage : /download <url> [dossier (défaut: downloads)]");
-        break;
-      }
-
-      addNexusMessage(
-        `{${COLORS.muted}-fg}Téléchargement de ${url}...{/}`
-      );
-
-      try {
-        const result = await file_downloadTool.execute({
-          url,
-          folder,
-          confirmed: true,
-        });
-
-        const sessionNote =
-          result.gainedSession
-            ? "\nSession enregistrée : les prochains téléchargements de ce site seront automatiques et authentifiés (cookies conservés)."
-            : result.via === "browser"
-              ? "\nSession (cookies) réutilisée : vos téléchargements de ce site passent désormais par le chemin rapide authentifié."
-              : "";
-
-        addNexusMessage(
-          [
-            "TÉLÉCHARGEMENT TERMINÉ",
-            "",
-            `Fichier : {${COLORS.cyan}-fg}${result.name}{/}`,
-            `Taille : {${COLORS.cyan}-fg}${formatBytes(result.size)}{/}`,
-            `Dossier : {${COLORS.cyan}-fg}${result.folder}{/}`,
-            result.via === "browser"
-              ? `Mode : {${COLORS.muted}-fg}navigateur (session){/}`
-              : `Mode : {${COLORS.muted}-fg}HTTP direct{/}`,
-            sessionNote,
-          ].filter(Boolean).join("\n")
-        );
-      } catch (error) {
-        addNexusMessage(
-          `Échec du téléchargement : {${COLORS.red}-fg}${error?.message ?? error}{/}`
-        );
-      }
       break;
     }
 
@@ -1953,7 +1888,7 @@ async function handleCommand(message) {
           "├─ PROJECTS (init/set/checkpoint/log/status/resume)",
           "├─ GMAIL",
           "├─ CALENDAR",
-          "├─ FILES (local + Drive : search/list/read/write/mkdir/move/copy/download)",
+          "├─ FILES (local + Drive : search/list/read/write/mkdir/move/copy)",
           "├─ HOME AUTOMATION",
           "└─ NAS",
           "",
@@ -2279,12 +2214,10 @@ function wait(ms) {
 function shutdown() {
   clearInterval(orbAnimation);
 
-  closeDownloadBrowser().finally(() => {
-    screen.program.showCursor();
-    screen.destroy();
+  screen.program.showCursor();
+  screen.destroy();
 
-    process.exit(0);
-  });
+  process.exit(0);
 }
 
 
