@@ -103,22 +103,29 @@ async function searchOneSource(source, args) {
 
 async function listOneSource(source, args) {
   if (source === "local") {
-    return tagResults(
-      listLocalFolder({
-        folder: args.folder,
-        limit: args.limit,
-      }),
-      "local"
-    );
+    const summary = listLocalFolder({
+      folder: args.folder,
+      limit: args.limit,
+    });
+
+    return { source: "local", ...summary };
   }
 
-  return tagResults(
-    await listDriveFolder({
-      folderId: args.folderId ?? "root",
-      limit: args.limit ?? 50,
-    }),
-    "drive"
-  );
+  const entries = await listDriveFolder({
+    folderId: args.folderId ?? "root",
+    limit: args.limit ?? 50,
+  });
+
+  return {
+    source: "drive",
+    path: "Google Drive",
+    absent: false,
+    count: entries.length,
+    dirs: 0,
+    files: entries.length,
+    totalSize: 0,
+    entries,
+  };
 }
 
 
@@ -152,7 +159,7 @@ const file_searchTool = {
         folder: {
           type: STRING,
           description:
-            "Dossier local restrictif (chemin relatif à la racine, ex: 'cours' ou 'TD/math') pour la source locale.",
+            "Dossier local restrictif (chemin relatif à la racine, ex: 'cours' ou 'TD/math') pour la source locale. 'downloads' / 'téléchargements' = le dossier Téléchargements réel.",
         },
         limit: limitParameter,
       },
@@ -185,7 +192,7 @@ const file_listTool = {
   declaration: {
     name: "file_list",
     description:
-      "Liste le contenu d'un dossier : local (Documents, cours, TD...) et/ou Google Drive. Source par défaut : la source prioritaire configurée.",
+      "LIT UN DOSSIER en UN SEUL appel : renvoie le résumé (nombre de fichiers, dossiers, taille totale) + la liste des entrées avec tailles. Local (Documents, cours, TD...) et/ou Google Drive. Ne pas lire ensuite chaque fichier un par un : le résumé suffit, sauf si l'utilisateur demande le contenu d'un fichier précis (file_read).",
     parameters: {
       type: Type.OBJECT,
       properties: {
@@ -193,7 +200,7 @@ const file_listTool = {
         folder: {
           type: STRING,
           description:
-            "Dossier local à lister (chemin relatif à la racine, vide = racine).",
+            "Dossier local à lister (chemin relatif à la racine, vide = racine). 'downloads' / 'téléchargements' = le dossier Téléchargements réel (~/Downloads).",
         },
         folderId: {
           type: STRING,
@@ -206,7 +213,7 @@ const file_listTool = {
   },
 
   async execute(args = {}) {
-    const results = [];
+    let result = null;
 
     const sources = args.folderId
       ? ["drive"]
@@ -216,17 +223,27 @@ const file_listTool = {
       try {
         const found = await listOneSource(source, args);
 
-        results.push(...found);
+        result = found;
 
-        if (found.length > 0) {
+        if (found.entries.length > 0) {
           break;
         }
       } catch {
-        // Source indisponible → on passe à la suivante.
+        // Source indisponible (ex : auth Drive manquante) → on passe à la suivante.
       }
     }
 
-    return results.slice(0, args.limit ?? 50);
+    return (
+      result ?? {
+        source: args.source ?? "local",
+        absent: true,
+        count: 0,
+        dirs: 0,
+        files: 0,
+        totalSize: 0,
+        entries: [],
+      }
+    );
   },
 };
 
@@ -243,7 +260,7 @@ const file_readTool = {
         path: {
           type: STRING,
           description:
-            "Chemin local du fichier (absolu ou relatif à la racine configurée).",
+            "Chemin local du fichier ou dossier (absolu, ou relatif à la racine). 'downloads' / 'téléchargements' = le dossier Téléchargements réel. Un DOSSIER renvoie le résumé de son contenu.",
         },
         fileId: {
           type: STRING,

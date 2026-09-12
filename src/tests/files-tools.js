@@ -18,6 +18,9 @@ process.env.NEXUS_FILES_ROOT =
 process.env.NEXUS_FILES_DOWNLOAD_DIR =
   path.join(TMP, "Documents", "downloads");
 
+const TMP_DOWNLOADS =
+  process.env.NEXUS_FILES_DOWNLOAD_DIR;
+
 fs.mkdirSync(path.join(TMP, "Documents", "cours"), {
   recursive: true,
 });
@@ -154,14 +157,37 @@ test("searchLocalFiles : restreint à un dossier", () => {
 
 test("listLocalFolder : racine et sous-dossier", () => {
   const rootEntries = listLocalFolder({});
-  const names = rootEntries.map((e) => e.name);
+  const names = rootEntries.entries.map((e) => e.name);
 
   assert.ok(names.includes("cours"));
   assert.ok(names.includes("TD"));
 
   const cours = listLocalFolder({ folder: "cours" });
 
-  assert.ok(cours.some((e) => e.name === "analyse1.md"));
+  assert.ok(cours.entries.some((e) => e.name === "analyse1.md"));
+});
+
+test("listLocalFolder : résumé du dossier (count/dirs/files/totalSize)", () => {
+  const rootEntries = listLocalFolder({});
+
+  assert.ok(rootEntries.dirs >= 1);
+  assert.ok(rootEntries.files >= 1);
+  assert.equal(rootEntries.count, rootEntries.dirs + rootEntries.files);
+  assert.ok(rootEntries.totalSize > 0);
+});
+
+test("listLocalFolder : dossier absent → absent:true sans création", () => {
+  const missing = listLocalFolder({ folder: "inexistant-xyz" });
+
+  assert.equal(missing.absent, true);
+  assert.equal(missing.count, 0);
+  assert.deepEqual(missing.entries, []);
+});
+
+test("listLocalFolder : alias 'downloads' → dossier Téléchargements réel", () => {
+  const alias = listLocalFolder({ folder: "downloads" });
+
+  assert.equal(alias.path, TMP_DOWNLOADS);
 });
 
 test("readLocalFile : texte, image/PDF joints, binaire autre, absent", () => {
@@ -235,13 +261,25 @@ test("file_search : source explicite local", async () => {
   assert.ok(results.some((r) => r.name === "notes-nexus.txt"));
 });
 
-test("file_list : dossier local", async () => {
+test("file_list : dossier local avec résumé", async () => {
   const results = await file_listTool.execute({
     folder: "cours",
     source: "local",
   });
 
-  assert.ok(results.some((r) => r.name === "analyse1.md"));
+  assert.ok(results.entries.some((r) => r.name === "analyse1.md"));
+  assert.equal(results.count, 1);
+  assert.equal(results.source, "local");
+});
+
+test("file_list : dossier absent → absent:true", async () => {
+  const results = await file_listTool.execute({
+    folder: "dossier-inexistant",
+    source: "local",
+  });
+
+  assert.equal(results.absent, true);
+  assert.equal(results.entries.length, 0);
 });
 
 test("file_read : chemin relatif local", async () => {

@@ -14,9 +14,11 @@ import {
   relative,
   resolve,
 } from "node:path";
-import { homedir } from "node:os";
 
-import { resolveRoot } from "./settings.js";
+import {
+  resolveRoot,
+  defaultDownloadDir,
+} from "./settings.js";
 import {
   isVisualMime,
   detectVisualMime,
@@ -25,6 +27,11 @@ import {
 
 const MAX_DEPTH = 6;
 const MAX_READ_CHARS = 300_000;
+const DOWNLOAD_ALIASES = [
+  "downloads",
+  "téléchargements",
+  "telechargements",
+];
 const BINARY_EXTENSIONS = new Set([
   ".png", ".jpg", ".jpeg", ".gif", ".webp",
   ".pdf", ".zip", ".tar", ".gz", ".7z",
@@ -98,7 +105,7 @@ export function searchLocalFiles({
 } = {}) {
   const baseRoot =
     folder
-      ? folderFromRoot(folder)
+      ? resolveFolderPath(folder)
       : (root
           ? resolve(root)
           : resolveRoot());
@@ -173,14 +180,36 @@ export function searchLocalFiles({
   return results;
 }
 
-function folderFromRoot(folder) {
-  const root = resolveRoot();
-
-  if (isAbsolute(folder)) {
-    return resolve(folder);
+function resolveFolderPath(target) {
+  if (isAbsolute(target)) {
+    return resolve(target);
   }
 
-  return resolve(join(root, folder));
+  const root = resolveRoot();
+
+  const underRoot =
+    resolve(join(root, target));
+
+  // Alias : 'downloads' / 'téléchargements' → dossier de
+  // téléchargement réel (~/Downloads), toujours prioritaire.
+  const lower = target.toLowerCase();
+
+  for (const alias of DOWNLOAD_ALIASES) {
+    if (lower === alias) {
+      return defaultDownloadDir();
+    }
+
+    if (lower.startsWith(alias + "/")) {
+      return resolve(
+        join(
+          defaultDownloadDir(),
+          target.slice(alias.length + 1)
+        )
+      );
+    }
+  }
+
+  return underRoot;
 }
 
 export function listLocalFolder({
@@ -190,18 +219,24 @@ export function listLocalFolder({
 } = {}) {
   const target =
     folder
-      ? folderFromRoot(folder)
+      ? resolveFolderPath(folder)
       : (root
           ? resolve(root)
           : resolveRoot());
 
   if (!existsSync(target)) {
-    return [];
+    return {
+      path: target,
+      absent: true,
+      count: 0,
+      dirs: 0,
+      files: 0,
+      totalSize: 0,
+      entries: [],
+    };
   }
 
-  const entries = safeReadDir(target);
-
-  const items = entries
+  const items = safeReadDir(target)
     .filter((entry) => !entry.name.startsWith("."))
     .map((entry) =>
       toEntry(
@@ -211,7 +246,24 @@ export function listLocalFolder({
       )
     );
 
-  return items.slice(0, limit);
+  const dirs = items
+    .filter((item) => item.isDir)
+    .length;
+
+  const totalSize = items.reduce(
+    (sum, item) => sum + (item.size ?? 0),
+    0
+  );
+
+  return {
+    path: target,
+    absent: false,
+    count: items.length,
+    dirs,
+    files: items.length - dirs,
+    totalSize,
+    entries: items.slice(0, limit),
+  };
 }
 
 export function readLocalFile(path, {
@@ -220,7 +272,7 @@ export function readLocalFile(path, {
   const fullPath =
     isAbsolute(path)
       ? resolve(path)
-      : resolve(join(resolveRoot(), path));
+      : resolveFolderPath(path);
 
   if (!existsSync(fullPath)) {
     return null;
@@ -231,7 +283,7 @@ export function readLocalFile(path, {
   if (stats.isDirectory()) {
     return {
       isDir: true,
-      entries: listLocalFolder({
+      ...listLocalFolder({
         root: fullPath,
       }),
     };
@@ -282,7 +334,7 @@ export function readLocalFile(path, {
 export function resolveLocalPath(targetPath) {
   return isAbsolute(targetPath)
     ? resolve(targetPath)
-    : resolve(join(resolveRoot(), targetPath));
+    : resolveFolderPath(targetPath);
 }
 
 export function localFileExists(targetPath) {

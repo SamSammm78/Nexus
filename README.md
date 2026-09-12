@@ -462,14 +462,21 @@ src/tools/files.js               → file_search / file_list / file_read
 
 - `file_search` : recherche par nom, source `auto` = source prioritaire
   configurée puis repli automatique sur l'autre source.
-- `file_list` : contenu d'un dossier (local : chemin relatif à la racine ;
-  Drive : `folderId`, vide = « Mon Drive »).
+- `file_list` : **lit un dossier en UN SEUL appel** et renvoie un résumé
+  (nombre de fichiers/dossiers, taille totale) + la liste des entrées avec
+  leurs tailles (économise le quota : pas besoin de lire chaque fichier).
+  Local : chemin relatif à la racine, ou alias `downloads` / `téléchargements`
+  → vrai dossier `~/Downloads`. Dossier absent → signalé `absent:true`
+  (NEXUS ne crée jamais de dossier pour explorer). Drive : `folderId`,
+  vide = « Mon Drive ».
 - `file_read` : lecture texte (fichiers locaux via `path`, Drive via `fileId`).
+  Un DOSSIER passé à `file_read` renvoie le même résumé que `file_list`.
   Les IMAGES et PDF sont joints automatiquement au modèle pour analyse
   (via `functionResponse.parts` `inlineData`, lire les fichiers visuels sans
   `/attach`). Au-delà de ~18 Mo, le fichier est signalé sans contenu.
 - `file_write` : crée/écrase un fichier texte local (écrasement = confirmation).
-- `file_mkdir` : crée des dossiers (récursif) dans la racine locale.
+- `file_mkdir` : crée des dossiers (récursif) — utilisé UNIQUEMENT sur
+  demande explicite de l'utilisateur, jamais pour explorer.
 - `file_download` : télécharge une URL vers le dossier **Téléchargements**
   de l'utilisateur (`~/Downloads`). D'abord en mode HTTP direct (rapide) ;
   si le serveur renvoie une page HTML ou un fichier invalide, l'outil
