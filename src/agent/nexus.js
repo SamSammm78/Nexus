@@ -146,6 +146,9 @@ function getToolsForRoute(route) {
         .concat(
           getNativeDeclaration("download_file")
         )
+        .concat(
+          getNativeDeclaration("browser_download_pdf")
+        )
         .concat(memoryDeclarations)
         .filter(Boolean);
 

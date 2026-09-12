@@ -162,4 +162,10 @@ When using Playwright:
   download element (browser_click) or call download_file
   directly with its ref/selector/text. download_file saves
   the file to ~/Downloads/NEXUS without overwriting.
+- When the user asks to "download the PDF / the open
+  document / the current PDF / save the open PDF", call
+  browser_download_pdf: it fetches the PDF currently open
+  in the browser (URL, iframe/embed, or blob:) through the
+  Playwright session (page.request, cookies kept) and saves
+  it to ~/Downloads/NEXUS with a safe unique name.
 `;

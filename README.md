@@ -459,6 +459,7 @@ src/services/files/local.js      → recherche / list / lecture disque
 src/services/google/drive.js     → recherche / list / lecture Google Drive
 src/tools/files.js               → file_search / file_list / file_read / file_write / file_mkdir / file_move / file_copy
 src/tools/download.js            → download_file
+src/tools/pdf.js                 → browser_download_pdf
 ```
 
 - `file_search` : recherche par nom, source `auto` = source prioritaire
@@ -493,6 +494,19 @@ src/tools/download.js            → download_file
   `DOWNLOAD_TIMEOUT` / `DOWNLOAD_CANCELLED`, `INVALID_FILENAME`,
   `DOWNLOAD_FAILED`. Le serveur `@playwright/mcp` est épinglé en `0.0.72`
   (versions plus récentes plantent sur le téléchargement).
+- `browser_download_pdf` : télécharge le **PDF actuellement ouvert**
+  dans le navigateur (« télécharge ce PDF », « enregistre le PDF
+  ouvert »). Récupère l'URL réelle (URL directe, iframe/embed/object,
+  ou `blob:`) puis télécharge via `page.request` du contexte Playwright
+  (cookies + session conservés : PDF authentifiés OK), en passant par
+  `browser_run_code_unsafe` du serveur MCP. Vérifie que la réponse est
+  un vrai PDF (magic `%PDF-` / `application/pdf`) avant d'enregistrer.
+  Nom issu des headers (`Content-Disposition`) ou de l'URL ; sauvegarde
+  dans `~/Downloads/NEXUS` sans écrasement. Codes d'erreur :
+  `NO_ACTIVE_PAGE`, `PDF_NOT_FOUND`, `DOWNLOAD_TIMEOUT`,
+  `INVALID_FILENAME`, `DOWNLOAD_FAILED`. Limite connue : un `blob:` ouvert
+  dans la barre d'adresse dont la page créatrice a été quittée n'est pas
+  récupérable.
 - Drive est branché sur le même OAuth que Gmail/Calendar
   (scope supplémentaire `drive.readonly` — voir re-autorisation ci-dessous).
 - Config : `data/files-config.json` (`root`, `sourcePriority`), surchargée
@@ -1259,6 +1273,7 @@ Avoid infinite retry loops.
    - file_write / file_mkdir : création fichiers + dossiers (confirmation écrasement)
    - file_move / file_copy : déplacer / copier fichiers et dossiers (confirmation écrasement)
    - download_file : téléchargement web → ~/Downloads/NEXUS (via navigateur Playwright, ref/selector/text, anti-écrasement)
+   - browser_download_pdf : PDF ouvert dans le navigateur → ~/Downloads/NEXUS (URL directe, iframe/embed, blob:, session cookies conservée)
    - route FILES (router), disponible aussi sur NATIVE/BROWSER
    - configuration : racine locale, priorité local / drive, CLI /files
 

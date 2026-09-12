@@ -41,6 +41,10 @@ import {
 } from "./download.js";
 
 import {
+  pdfTools,
+} from "./pdf.js";
+
+import {
   changeDeviceState,
   getDeviceId,
   getDeviceState,
@@ -71,6 +75,7 @@ export const nativeTools = [
   ...filesTools,
 
   ...downloadTools,
+  ...pdfTools,
 
   changeDeviceState,
   getDeviceId,
