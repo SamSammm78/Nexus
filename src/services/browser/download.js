@@ -134,30 +134,47 @@ export async function downloadViaBrowser({
     page = await context.newPage();
 
     const downloadPromise =
-      page.waitForEvent("download", {
-        timeout: timeoutMs,
-      });
+      page.waitForEvent("download");
 
-    try {
-      await page.goto(url, {
-        waitUntil: "commit",
+    const gotoPromise =
+      page.goto(url, {
+        waitUntil: "domcontentloaded",
         timeout: timeoutMs,
         referer: headers.referer,
-      });
-    } catch {
-      // L'URL peut déclencher le téléchargement avant la fin de la
-      // navigation ; l'événement download arrive par ailleurs.
+      }).then(
+        () => "navigated",
+        () => "aborted"
+      );
+
+    let download = await Promise.race([
+      downloadPromise
+        .then((d) => d)
+        .catch(() => null),
+      gotoPromise.then(() => null),
+    ]);
+
+    if (!download) {
+      // Navigation arrivée à son terme sans téléchargement, ou annulée :
+      // laisse une courte grâce pour les téléchargements déclenchés juste
+      // après le chargement, sinon échec immédiat (pas d'attente de 30 s).
+      download = await Promise.race([
+        downloadPromise
+          .then((d) => d)
+          .catch(() => null),
+        new Promise((resolve) =>
+          setTimeout(() => resolve(null), 2_500)
+        ),
+      ]);
     }
 
-    let download;
+    if (!download) {
+      await page.close().catch(() => {});
 
-    try {
-      download = await downloadPromise;
-    } catch {
       throw new Error(
-        "Le navigateur n'a pas déclenché de téléchargement pour cette URL. " +
-        "Elle affiche peut-être une page : vérifie avec browser_snapshot, ou " +
-        "donne l'URL du lien de téléchargement direct."
+        "Le navigateur a affiché une page sans déclencher de téléchargement " +
+        "pour cette URL. Elle demande peut-être une session : ouvre-la via " +
+        "le navigateur (browser_navigate/browser_click), puis donne l'URL " +
+        "du lien de téléchargement direct."
       );
     }
 

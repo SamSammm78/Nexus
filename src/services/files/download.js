@@ -18,7 +18,7 @@ import {
   extname,
 } from "node:path";
 
-import { resolveRoot } from "./settings.js";
+import { resolveRoot, defaultDownloadDir } from "./settings.js";
 import {
   validateMagic,
   removeFileQuietly,
@@ -49,7 +49,7 @@ export function downloadTargetFolder(folder) {
     ? isAbsolute(folder)
       ? resolve(folder)
       : resolve(join(root, folder))
-    : join(root, DEFAULT_DOWNLOAD_FOLDER);
+    : defaultDownloadDir();
 
   mkdirSync(base, { recursive: true });
 

@@ -31,6 +31,11 @@ const SOURCE_PRIORITIES = [
   "drive",
 ];
 
+const DEFAULT_DOWNLOAD_DIR = join(
+  homedir(),
+  "Downloads"
+);
+
 function defaultRoot() {
   return join(homedir(), "Documents");
 }
@@ -92,6 +97,40 @@ export function resolveRoot() {
   return resolve(expanded);
 }
 
+export function defaultDownloadDir() {
+  const configured =
+    process.env.NEXUS_FILES_DOWNLOAD_DIR?.trim() ||
+    readConfig().downloadDir ||
+    DEFAULT_DOWNLOAD_DIR;
+
+  return resolve(
+    configured.replace(
+      /^~(?=\/|$)/,
+      homedir()
+    )
+  );
+}
+
+export function setFilesDownloadDir(dir) {
+  const value = String(dir ?? "")
+    .trim();
+
+  if (!value) {
+    throw new Error(
+      "Chemin de dossier de téléchargement vide."
+    );
+  }
+
+  writeConfig({
+    downloadDir: value.replace(
+      /^~(?=\/|$)/,
+      homedir()
+    ),
+  });
+
+  return defaultDownloadDir();
+}
+
 export function getFilesSettings() {
   const priority =
     readConfig().sourcePriority;
@@ -101,6 +140,7 @@ export function getFilesSettings() {
     sourcePriority: SOURCE_PRIORITIES.includes(priority)
       ? priority
       : "local",
+    downloadDir: defaultDownloadDir(),
   };
 }
 

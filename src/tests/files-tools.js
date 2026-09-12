@@ -15,6 +15,9 @@ process.env.NEXUS_FILES_CONFIG =
 process.env.NEXUS_FILES_ROOT =
   path.join(TMP, "Documents");
 
+process.env.NEXUS_FILES_DOWNLOAD_DIR =
+  path.join(TMP, "Documents", "downloads");
+
 fs.mkdirSync(path.join(TMP, "Documents", "cours"), {
   recursive: true,
 });

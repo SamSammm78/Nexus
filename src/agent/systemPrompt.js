@@ -95,10 +95,11 @@ FILES RULES
   texte), file_mkdir (créer des dossiers). Chemins relatifs à la
   racine locale (ex: 'cours/S1/programmation').
 - TÉLÉCHARGER : file_download avec une URL (ex. un document vu
-  dans le navigateur Playwright). Destination par défaut :
-  'downloads'. VITE : browser: false (défaut) d'abord — HTTP direct
-  (rapide). Si l'utilisateur a ouvert le site dans le navigateur ou que
-  le site demande explicitement une session → browser: true.
+  dans le navigateur Playwright). Destination par défaut : le dossier
+  Téléchargements de l'utilisateur (~/Downloads). VITE : browser: false
+  (défaut) d'abord — HTTP direct (rapide). Si l'utilisateur a ouvert le
+  site dans le navigateur ou que le site demande explicitement une
+  session → browser: true.
 - L'outil RETENTE AUTOMATIQUEMENT via le navigateur si le serveur
   renvoie une page HTML ou un fichier invalide : inutile de lancer
   file_download deux fois à la main.

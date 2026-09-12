@@ -26,6 +26,7 @@ import {
   getFilesSettings,
   setFilesRoot,
   setFilesPriority,
+  setFilesDownloadDir,
 } from "../services/files/settings.js";
 
 import {
@@ -517,7 +518,7 @@ const COMMANDS = [
   { name: "/help",    desc: "Afficher l'aide des commandes" },
   { name: "/status",  desc: "État de NEXUS" },
   { name: "/attach",  desc: "Ajouter des fichiers (chemins)" },
-  { name: "/files",   desc: "Fichiers : statut / root <chem> / priority <local|drive> / pending" },
+  { name: "/files",   desc: "Fichiers : statut / root / priority / downloaddir / pending" },
   { name: "/detach",  desc: "Retirer un fichier (index, nom ou all)" },
   { name: "/project", desc: "Projet actif (état / initialise)" },
   { name: "/projects", desc: "Liste des projets" },
@@ -1427,7 +1428,7 @@ async function handleCommand(message) {
           "/tools    Outils disponibles",
           "/attach   Ajouter des fichiers",
           "          (ex: /attach doc.pdf img.png)",
-          "/files    Fichiers : statut, root, priority, pending",
+          "/files    Fichiers : statut, root, priority, downloaddir, pending",
           "/detach   Retirer un fichier (index ou nom)",
           "/detach all   Tout retirer",
           "/clear    Effacer la conversation",
@@ -1556,7 +1557,20 @@ async function handleCommand(message) {
         break;
       }
 
-      const { root, sourcePriority } = getFilesSettings();
+      if (sub === "downloaddir") {
+        const newDir = args.slice(1).join(" ");
+
+        if (!newDir) {
+          addNexusMessage("Usage : /files downloaddir <chemin> (ex: ~/Téléchargements)");
+          break;
+        }
+
+        const resolved = setFilesDownloadDir(newDir);
+        addNexusMessage(`Dossier de téléchargement défini : ${resolved}`);
+        break;
+      }
+
+      const { root, sourcePriority, downloadDir } = getFilesSettings();
 
       addNexusMessage(
         [
@@ -1564,8 +1578,9 @@ async function handleCommand(message) {
           "",
           `Racine locale : {${COLORS.cyan}-fg}${root}{/}`,
           `Source prioritaire : {${COLORS.cyan}-fg}${sourcePriority === "local" ? "LOCAL (disque)" : "GOOGLE DRIVE"}{/}`,
+          `Téléchargements : {${COLORS.cyan}-fg}${downloadDir}{/}`,
           "",
-          "Commandes : /files root <chemin> · /files priority <local|drive> · /files pending",
+          "Commandes : /files root <chemin> · /files priority <local|drive> · /files downloaddir <chemin> · /files pending",
         ].join("\n")
       );
       break;
